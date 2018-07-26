@@ -92,7 +92,7 @@ main( int argc, char* argv[] )
     std::string buf;
     buf.resize( SMALL_BUF_SIZE );
     t = clock();
-    while ( gzgets( fp, &buf[0], SMALL_BUF_SIZE ) > 0 );
+    while ( gzgets( fp, &buf[0], SMALL_BUF_SIZE ) != Z_NULL );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[gzgets] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );

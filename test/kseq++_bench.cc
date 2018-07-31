@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <vector>
 #include <fcntl.h>
 
 #include "kseq++.h"
@@ -40,13 +41,14 @@ using namespace klibpp;
   int
 main( int argc, char* argv[] )
 {
-  if ( argc == 1 ) {
-    std::cerr << "Usage: " << argv[0] << " FILE" << std::endl;
+  if ( argc < 3 ) {
+    std::cerr << "Usage: " << argv[0] << " INPUT OUTPUT" << std::endl;
     return EXIT_FAILURE;
   }
 
   gzFile fp;
   clock_t t;
+  std::cerr << "=== READ TESTS ===" << std::endl;
   {
     std::string buf;
     buf.resize( SMALL_BUF_SIZE );
@@ -152,6 +154,49 @@ main( int argc, char* argv[] )
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );
+  }
+  std::cerr << "=== WRITE TESTS ===" << std::endl;
+  {
+    std::vector< KSeq > records;
+    KSeq rec;
+    fp = gzopen( argv[1], "r" );
+    auto iks = make_kstream( fp, gzread );
+    while (iks >> rec) records.push_back( std::move( rec ) );
+    gzclose( fp );
+    {
+      t = clock();
+      int fd = open( argv[2], O_WRONLY );
+      auto oks = make_kstream( fd, write );
+      for ( const auto& r : records ) oks << r;
+      auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+      std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
+      close( fd );
+    }
+    {
+      t = clock();
+      fp = gzopen( argv[2], "w" );
+      auto oks = make_kstream( fp, gzwrite );
+      for ( const auto& r : records ) oks << r;
+      auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+      std::cerr << "[kseq++/gz] " << std::setprecision(3) << d << " sec" << std::endl;
+      gzclose( fp );
+    }
+  }
+  {
+    seqan::SeqFileIn i_file;
+    seqan::StringSet< seqan::CharString > names;
+    seqan::StringSet< seqan::CharString > seqs;
+    seqan::StringSet< seqan::CharString > quals;
+    open( i_file, argv[1] );
+    while ( !atEnd( i_file ) ) readRecords( names, seqs, quals, i_file );
+    close( i_file );
+    seqan::SeqFileOut o_file;
+    t = clock();
+    open( o_file, argv[1], seqan::FileOpenMode::OPEN_WRONLY );
+    writeRecords( o_file, names, seqs, quals );
+    close( o_file );
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[seqan] " << std::setprecision(3) << d << " sec" << std::endl;
   }
 
   return EXIT_SUCCESS;

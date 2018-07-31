@@ -134,6 +134,7 @@ main( int argc, char* argv[] )
   size_t min_len = 0;
   --min_len;  // equals to the largest possible integer.
   while ( iks >> record ) {
+    oks << record;
     total_len += record.seq.size();
     if ( record.seq.size() < min_len ) min_len = record.seq.size();
     if ( record.seq.size() > max_len ) max_len = record.seq.size();
@@ -146,7 +147,6 @@ main( int argc, char* argv[] )
     std::cout << std::endl;
     print_trunc( "  seq:  ", record.seq );
     if ( ! record.qual.empty() ) print_trunc( "  qual: ", record.seq );
-    oks << record;
   }
   if ( count > MAX_SHOWN_REC ) {
     std::cout << "... and " << count - MAX_SHOWN_REC << " other records." << std::endl;

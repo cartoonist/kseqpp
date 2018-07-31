@@ -24,6 +24,11 @@
 #include <cstdlib>
 #include <ios>
 
+// versioning
+#define KLIBPP_MAJOR 0
+#define KLIBPP_MINOR 0
+#define KLIBPP_REVISION 1
+
 namespace klibpp {
   struct KSeq {  // kseq_t
     std::string name;

@@ -24,7 +24,7 @@
 #include <cstdlib>
 #include <ios>
 
-namespace klib {
+namespace klibpp {
   struct KSeq {  // kseq_t
     std::string name;
     std::string comment;
@@ -38,8 +38,13 @@ namespace klib {
     }
   };
 
+  enum KStreamMode {
+    in,
+    out,
+  };
+
   template< typename TFile,
-            typename TRead,
+            typename TFunc,
             int TBufSize = 16384 >
     class KStream {  // kstream_t
       protected:
@@ -48,6 +53,8 @@ namespace klib {
         constexpr static int SEP_TAB = 1;    // isspace() && !' '
         constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
         constexpr static int SEP_MAX = 2;
+        /* Consts */
+        constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
         unsigned char buf[ TBufSize ];       /**< @brief character buffer */
         int begin;                           /**< @brief begin buffer index */
@@ -56,13 +63,28 @@ namespace klib {
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
         bool last;                           /**< @brief last read was successful */
+        unsigned int wraplen;                /**< @brief line wrap length */
+        KStreamMode mode;                    /**< @brief stream mode */
         TFile f;                             /**< @brief file handler */
-        TRead read;                          /**< @brief read function */
+        TFunc func;                          /**< @brief read/write function */
       public:
-        KStream( TFile f_, TRead r_ )  // ks_init
-          : f( f_ ), read( r_ )
+        KStream( TFile f_, TFunc func_, KStreamMode m_=KStreamMode::in )  // ks_init
+          : wraplen( DEFAULT_WRAPLEN ), mode( m_ ), f( f_ ), func( func_ )
         {
           this->rewind();
+        }
+
+        KStream( KStream const& ) = delete;
+        KStream& operator=( KStream const& ) = delete;
+        KStream( KStream&& ) = default;
+        KStream& operator=( KStream&& ) = default;
+        ~KStream( ) = default;
+
+        /* Mutators */
+          inline void
+        set_wraplen( unsigned int len )
+        {
+          this->wraplen = len;
         }
         /* Methods */
           inline bool
@@ -139,6 +161,26 @@ namespace klib {
           return *this;
         }
 
+          inline KStream&
+        operator<<( const KSeq& rec )
+        {
+          if ( rec.qual.empty() ) this->puts( ">" );  // FASTA record
+          else this->puts( "@" );  // FASTQ record
+          this->puts( rec.name );
+          if ( !rec.comment.empty() ) {
+            this->puts( " " );
+            this->puts( rec.comment );
+          }
+          this->puts( "\n" );
+          this->puts( rec.seq, true );
+          if ( !rec.qual.empty() ) {
+            this->puts( "\n+\n" );
+            this->puts( rec.qual, true );
+          }
+          this->puts( "\n" );
+          return *this;
+        }
+
         operator bool( ) const
         {
           return !this->fail();
@@ -156,13 +198,39 @@ namespace klib {
           if ( this->err() || this->eof() ) return false;
           // fetch
           this->begin = 0;
-          this->end = this->read( this->f, this->buf, TBufSize );
+          this->end = this->func( this->f, this->buf, TBufSize );
           if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
             this->is_eof = true;
             return false;
           }
           c = this->_nextc();
           return true;
+        }
+
+          inline bool
+        puts( std::string const& s, bool wrap=false ) noexcept
+        {
+          if ( this->err() ) return false;
+
+          std::string::size_type cursor = 0;
+          std::string::size_type len = 0;
+          while ( cursor != s.size() ) {
+            assert( cursor < s.size() );
+            len = s.size() - cursor;
+            if ( wrap && this->wraplen < len ) len = this->wraplen;
+            if ( wrap && cursor != 0 ) {
+              if ( this->func( this->f, "\n", 1 ) == 0 ) {
+                this->end = -1;
+                break;
+              }
+            }
+            if ( this->func( this->f, &s[ cursor ], len ) == 0 ) {
+              this->end = -1;
+              break;
+            }
+            cursor += len;
+          }
+          return !this->err();
         }
 
           inline bool
@@ -226,18 +294,22 @@ namespace klib {
         }
     };
 
-  template< typename TFile, typename TRead >
-      inline KStream< TFile, TRead >
-    make_kstream( TFile file, TRead read )
+  template< typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc > >
+    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
-      return KStream< TFile, TRead >( file, read );
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+          std::forward< Args >( args )... );
     }
 
-  template< int TBufSize, typename TFile, typename TRead >
-      inline KStream< TFile, TRead, TBufSize >
-    make_kstream( TFile file, TRead read )
+  template< int TBufSize, typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
+    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
-      return KStream< TFile, TRead, TBufSize >( file, read );
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+          std::forward< Args >( args )... );
     }
-}  /* -----  end of namespace klib  ----- */
+}  /* -----  end of namespace klibpp  ----- */
 #endif  /* ----- #ifndef KSEQPP_H__  ----- */

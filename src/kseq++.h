@@ -64,6 +64,13 @@ namespace klibpp {
         {
           this->rewind();
         }
+
+        KStream( KStream const& ) = delete;
+        KStream& operator=( KStream const& ) = delete;
+        KStream( KStream&& ) = default;
+        KStream& operator=( KStream&& ) = default;
+        ~KStream( ) = default;
+
         /* Methods */
           inline bool
         err( ) const  // ks_err

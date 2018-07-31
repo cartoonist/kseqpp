@@ -38,6 +38,11 @@ namespace klibpp {
     }
   };
 
+  enum KStreamMode {
+    in,
+    out,
+  };
+
   template< typename TFile,
             typename TFunc,
             int TBufSize = 16384 >
@@ -48,6 +53,8 @@ namespace klibpp {
         constexpr static int SEP_TAB = 1;    // isspace() && !' '
         constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
         constexpr static int SEP_MAX = 2;
+        /* Consts */
+        constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
         unsigned char buf[ TBufSize ];       /**< @brief character buffer */
         int begin;                           /**< @brief begin buffer index */
@@ -56,11 +63,13 @@ namespace klibpp {
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
         bool last;                           /**< @brief last read was successful */
+        unsigned int wraplen;                /**< @brief line wrap length */
+        KStreamMode mode;                    /**< @brief stream mode */
         TFile f;                             /**< @brief file handler */
         TFunc func;                          /**< @brief read/write function */
       public:
-        KStream( TFile f_, TFunc func_ )  // ks_init
-          : f( f_ ), func( func_ )
+        KStream( TFile f_, TFunc func_, KStreamMode m_=KStreamMode::in )  // ks_init
+          : wraplen( DEFAULT_WRAPLEN ), mode( m_ ), f( f_ ), func( func_ )
         {
           this->rewind();
         }
@@ -71,6 +80,12 @@ namespace klibpp {
         KStream& operator=( KStream&& ) = default;
         ~KStream( ) = default;
 
+        /* Mutators */
+          inline void
+        set_wraplen( unsigned int len )
+        {
+          this->wraplen = len;
+        }
         /* Methods */
           inline bool
         err( ) const  // ks_err
@@ -146,6 +161,26 @@ namespace klibpp {
           return *this;
         }
 
+          inline KStream&
+        operator<<( const KSeq& rec )
+        {
+          if ( rec.qual.empty() ) this->puts( ">" );  // FASTA record
+          else this->puts( "@" );  // FASTQ record
+          this->puts( rec.name );
+          if ( !rec.comment.empty() ) {
+            this->puts( " " );
+            this->puts( rec.comment );
+          }
+          this->puts( "\n" );
+          this->puts( rec.seq, true );
+          if ( !rec.qual.empty() ) {
+            this->puts( "\n+\n" );
+            this->puts( rec.qual, true );
+          }
+          this->puts( "\n" );
+          return *this;
+        }
+
         operator bool( ) const
         {
           return !this->fail();
@@ -170,6 +205,32 @@ namespace klibpp {
           }
           c = this->_nextc();
           return true;
+        }
+
+          inline bool
+        puts( std::string const& s, bool wrap=false ) noexcept
+        {
+          if ( this->err() ) return false;
+
+          std::string::size_type cursor = 0;
+          std::string::size_type len = 0;
+          while ( cursor != s.size() ) {
+            assert( cursor < s.size() );
+            len = s.size() - cursor;
+            if ( wrap && this->wraplen < len ) len = this->wraplen;
+            if ( wrap && cursor != 0 ) {
+              if ( this->func( this->f, "\n", 1 ) == 0 ) {
+                this->end = -1;
+                break;
+              }
+            }
+            if ( this->func( this->f, &s[ cursor ], len ) == 0 ) {
+              this->end = -1;
+              break;
+            }
+            cursor += len;
+          }
+          return !this->err();
         }
 
           inline bool
@@ -233,20 +294,22 @@ namespace klibpp {
         }
     };
 
-  template< typename TFile, typename TFunc >
+  template< typename TFile, typename TFunc, typename... Args >
       inline KStream< std::decay_t< TFile >, std::decay_t< TFunc > >
-    make_kstream( TFile&& file, TFunc&& func )
+    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
       return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ) );
+          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+          std::forward< Args >( args )... );
     }
 
-  template< int TBufSize, typename TFile, typename TFunc >
+  template< int TBufSize, typename TFile, typename TFunc, typename... Args >
       inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
-    make_kstream( TFile&& file, TFunc&& func )
+    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
       return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ) );
+          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+          std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */
 #endif  /* ----- #ifndef KSEQPP_H__  ----- */

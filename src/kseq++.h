@@ -39,7 +39,7 @@ namespace klibpp {
   };
 
   template< typename TFile,
-            typename TRead,
+            typename TFunc,
             int TBufSize = 16384 >
     class KStream {  // kstream_t
       protected:
@@ -57,10 +57,10 @@ namespace klibpp {
         bool is_ready;                       /**< @brief next record ready flag */
         bool last;                           /**< @brief last read was successful */
         TFile f;                             /**< @brief file handler */
-        TRead read;                          /**< @brief read function */
+        TFunc func;                          /**< @brief read/write function */
       public:
-        KStream( TFile f_, TRead r_ )  // ks_init
-          : f( f_ ), read( r_ )
+        KStream( TFile f_, TFunc func_ )  // ks_init
+          : f( f_ ), func( func_ )
         {
           this->rewind();
         }
@@ -156,7 +156,7 @@ namespace klibpp {
           if ( this->err() || this->eof() ) return false;
           // fetch
           this->begin = 0;
-          this->end = this->read( this->f, this->buf, TBufSize );
+          this->end = this->func( this->f, this->buf, TBufSize );
           if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
             this->is_eof = true;
             return false;
@@ -226,18 +226,20 @@ namespace klibpp {
         }
     };
 
-  template< typename TFile, typename TRead >
-      inline KStream< TFile, TRead >
-    make_kstream( TFile file, TRead read )
+  template< typename TFile, typename TFunc >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc > >
+    make_kstream( TFile&& file, TFunc&& func )
     {
-      return KStream< TFile, TRead >( file, read );
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ) );
     }
 
-  template< int TBufSize, typename TFile, typename TRead >
-      inline KStream< TFile, TRead, TBufSize >
-    make_kstream( TFile file, TRead read )
+  template< int TBufSize, typename TFile, typename TFunc >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
+    make_kstream( TFile&& file, TFunc&& func )
     {
-      return KStream< TFile, TRead, TBufSize >( file, read );
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ) );
     }
 }  /* -----  end of namespace klibpp  ----- */
 #endif  /* ----- #ifndef KSEQPP_H__  ----- */

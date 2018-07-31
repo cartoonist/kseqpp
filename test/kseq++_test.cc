@@ -18,17 +18,61 @@
 #include <zlib.h>
 #include <iostream>
 #include <iomanip>
+#include <string>
 
 #include "kseq++.h"
 #include "kseq.h"
 
 #define SEQ_TRUNC_LEN 20
 #define MAX_SHOWN_REC 10
+#define SEQ_WRAPLEN 20
+#define DEFAULT_TMPDIR "/tmp"
+#define TMPFILE_TEMPLATE "/kseqpp-XXXXXX"
 
 
-using namespace klib;
+using namespace klibpp;
 
 KSEQ_INIT(gzFile, gzread)
+
+  inline std::string
+get_env( const std::string& var )
+{
+  const char* val = ::getenv( var.c_str() );
+  if ( val == 0 ) {
+    return "";
+  }
+  else {
+    return val;
+  }
+}
+
+  inline std::string
+get_tmpdir_env( )
+{
+  return get_env( "TMPDIR" );
+}
+
+  inline std::string
+get_tmpdir( )
+{
+  std::string tmpdir = get_tmpdir_env();
+  if ( tmpdir.size() == 0 ) tmpdir = DEFAULT_TMPDIR;
+  return tmpdir;
+}
+
+  inline std::string
+get_tmpfile( )
+{
+  std::string tmpfile_templ = get_tmpdir() + TMPFILE_TEMPLATE;
+  char* tmpl = new char [ tmpfile_templ.size() + 1 ];
+  std::strcpy( tmpl, tmpfile_templ.c_str() );
+  int fd = mkstemp( tmpl );
+  tmpfile_templ = tmpl;
+
+  ::close( fd );
+  delete[] tmpl;
+  return tmpfile_templ;
+}
 
   void
 print_trunc( std::string prefix, const std::string& seq )
@@ -76,15 +120,21 @@ main( int argc, char* argv[] )
     return EXIT_FAILURE;
   }
 
-  gzFile fp = gzopen( argv[1], "r" );
-  auto ks = make_kstream( fp, gzread );
+  gzFile ifp = gzopen( argv[1], "r" );
+  std::string tmpfile = get_tmpfile();
+  gzFile ofp = gzopen( tmpfile.c_str(), "w" );
+  std::cout << "Output temporary file: " << tmpfile << std::endl;
+  auto iks = make_kstream( ifp, gzread, KStreamMode::in );
+  auto oks = make_kstream( ofp, gzwrite, KStreamMode::out );
+  oks.set_wraplen( SEQ_WRAPLEN );
   KSeq record;
   size_t count = 0;
   size_t total_len = 0;
   size_t max_len = 0;
   size_t min_len = 0;
   --min_len;  // equals to the largest possible integer.
-  while ( ks >> record ) {
+  while ( iks >> record ) {
+    oks << record;
     total_len += record.seq.size();
     if ( record.seq.size() < min_len ) min_len = record.seq.size();
     if ( record.seq.size() > max_len ) max_len = record.seq.size();
@@ -106,7 +156,8 @@ main( int argc, char* argv[] )
   std::cout << "maximum length: " << max_len << std::endl;
   std::cout << "average length: " << std::fixed << std::setprecision( 1 )
             << total_len / static_cast< double >( count ) << std::endl;
-  gzclose(fp);
+  gzclose(ifp);
+  gzclose(ofp);
   std::cout << "Verifying..." << std::endl;
   check( argv[1], count, total_len, min_len, max_len );
   std::cout << "PASSED" << std::endl;

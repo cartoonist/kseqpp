@@ -35,7 +35,7 @@ KSEQ_INIT(gzFile, gzread)
 #define BIG_BUF_SIZE 65536
 
 
-using namespace klib;
+using namespace klibpp;
 
   int
 main( int argc, char* argv[] )

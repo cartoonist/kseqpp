@@ -26,7 +26,7 @@
 #define MAX_SHOWN_REC 10
 
 
-using namespace klib;
+using namespace klibpp;
 
 KSEQ_INIT(gzFile, gzread)
 

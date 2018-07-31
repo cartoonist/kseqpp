@@ -24,7 +24,7 @@
 #include <cstdlib>
 #include <ios>
 
-namespace klib {
+namespace klibpp {
   struct KSeq {  // kseq_t
     std::string name;
     std::string comment;
@@ -239,5 +239,5 @@ namespace klib {
     {
       return KStream< TFile, TRead, TBufSize >( file, read );
     }
-}  /* -----  end of namespace klib  ----- */
+}  /* -----  end of namespace klibpp  ----- */
 #endif  /* ----- #ifndef KSEQPP_H__  ----- */

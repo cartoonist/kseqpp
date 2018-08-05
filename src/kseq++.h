@@ -88,7 +88,12 @@ namespace klibpp {
           wraplen( DEFAULT_WRAPLEN ), mode( m_ ),
           f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
-          this->rewind();
+          this->begin = 0;
+          this->end = 0;
+          this->is_eof = false;
+          this->is_tqs = false;
+          this->is_ready = false;
+          this->last = false;
         }
 
         KStream( TFile f_,
@@ -166,17 +171,6 @@ namespace klibpp {
         fail( ) const
         {
           return this->err() || this->tqs() || ( this->eof() && !this->last );
-        }
-
-          inline void
-        rewind( )  // ks_rewind
-        {
-          this->begin = 0;
-          this->end = 0;
-          this->is_eof = false;
-          this->is_tqs = false;
-          this->is_ready = false;
-          this->last = false;
         }
 
           inline KStream&

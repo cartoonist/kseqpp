@@ -25,6 +25,9 @@
 #include <ios>
 #include <vector>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 // versioning
 #define KLIBPP_MAJOR 0
@@ -64,6 +67,260 @@ namespace klibpp {
     constexpr In_ in;
     constexpr Out_ out;
   }  /* -----  end of namespace mode  ----- */
+
+  struct KEnd_ {};
+  constexpr KEnd_ kend;
+
+  template< typename TFile,
+            typename TFunc >
+    class KStream< TFile, TFunc, mode::Out_ > : public KStreamBase_ {
+      public:
+        /* Typedefs */
+        using base_type = KStreamBase_;
+        using spec_type = mode::Out_;
+        using size_type = base_type::size_type;
+        using char_type = base_type::char_type;
+      protected:
+        /* Consts */
+        constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 131072;
+        constexpr static unsigned int DEFAULT_WRAPLEN = 60;
+        /* Data members */
+        char_type* m_buf;                               /**< @brief character buffer */
+        char_type* w_buf;                               /**< @brief second character buffer */
+        size_type bufsize;                              /**< @brief buffer size */
+        std::thread worker;                             /**< @brief worker thread */
+        std::unique_ptr< std::mutex > bufslock;         /**< @brief buffers mutex */
+        std::unique_ptr< std::condition_variable > cv;  /**< @brief consumer/producer condition variable */
+        bool terminate;                                 /**< @brief thread terminate flag XXX: set before notify */
+        bool produced;                                  /**< @brief produced flag. XXX: SHARED (data race) */
+        size_type m_begin;                              /**< @brief begin buffer index */
+        size_type m_end;                                /**< @brief end buffer index or error flag if -1 */
+        size_type w_end;                                /**< @brief end second buffer index or error flag if -1 */
+        unsigned int wraplen;                           /**< @brief line wrap length */
+        TFile f;                                        /**< @brief file handler */
+        TFunc func;                                     /**< @brief write function */
+      public:
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type=mode::out,
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )
+          : m_buf( new char_type[ bs_ ] ), w_buf( new char_type[ bs_ ] ),
+          bufsize( bs_ ), bufslock( new std::mutex ), cv( new std::condition_variable ),
+          wraplen( DEFAULT_WRAPLEN ), f( std::move( f_ ) ), func( std::move(  func_  ) )
+        {
+          this->m_begin = 0;
+          this->m_end = 0;
+          this->terminate = false;
+          this->produced = false;
+          this->w_end = 0;
+          this->worker_start();
+        }
+
+        KStream( TFile f_,
+            TFunc func_,
+            std::make_unsigned_t< size_type > bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, bs_ )
+        { }
+
+        KStream( KStream const& ) = delete;
+        KStream& operator=( KStream const& ) = delete;
+
+        KStream( KStream&& other ) noexcept
+        {
+          other.worker_join();
+          this->m_buf = other.m_buf;
+          this->w_buf = other.w_buf;
+          other.m_buf = nullptr;
+          other.w_buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->bufslock = std::move( other.bufslock );
+          this->cv = std::move( other.cv );
+          this->terminate = false;
+          this->produced = other.produced;
+          this->m_begin = other.m_begin;
+          this->m_end = other.m_end;
+          this->w_end = other.w_end;
+          this->wraplen = other.wraplen;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          this->worker_start();
+        }
+
+        KStream& operator=( KStream&& other ) noexcept
+        {
+          if ( this == &other ) return *this;
+          other.worker_join();
+          delete[] this->m_buf;
+          delete[] this->w_buf;
+          this->m_buf = other.m_buf;
+          this->w_buf = other.w_buf;
+          other.m_buf = nullptr;
+          other.w_buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->bufslock = std::move( other.bufslock );
+          this->cv = std::move( other.cv );
+          this->terminate = false;
+          this->produced = other.produced;
+          this->m_begin = other.m_begin;
+          this->m_end = other.m_end;
+          this->w_end = other.w_end;
+          this->wraplen = other.wraplen;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          this->worker_start();
+          return *this;
+        }
+
+        ~KStream( ) noexcept
+        {
+          this->worker_join();
+          delete[] this->m_buf;
+          delete[] this->w_buf;
+        }
+        /* Mutators */
+          inline void
+        set_wraplen( unsigned int len )
+        {
+          this->wraplen = len;
+        }
+        /* Methods */
+          inline bool
+        fail( ) const
+        {
+          return this->m_end == -1;
+        }
+
+          inline KStream&
+        operator<<( const KSeq& rec )
+        {
+          if ( rec.qual.empty() ) this->puts( '>' );  // FASTA record
+          else this->puts( '@' );  // FASTQ record
+          this->puts( rec.name );
+          if ( !rec.comment.empty() ) {
+            this->puts( ' ' );
+            this->puts( rec.comment );
+          }
+          this->puts( '\n' );
+          this->puts( rec.seq, true );
+          if ( !rec.qual.empty() ) {
+            this->puts( '\n' );
+            this->puts( '+' );
+            this->puts( '\n' );
+            this->puts( rec.qual, true );
+          }
+          this->puts( '\n' );
+          return *this;
+        }
+
+          inline KStream&
+        operator<<( KEnd_ )
+        {
+          this->flush();
+          return *this;
+        }
+
+        operator bool( ) const
+        {
+          return !this->fail();
+        }
+        /* Low-level methods */
+          inline bool
+        puts( std::string const& s, bool wrap=false ) noexcept
+        {
+          if ( this->fail() ) return false;
+
+          std::string::size_type cursor = 0;
+          std::string::size_type len = 0;
+          while ( cursor != s.size() ) {
+            assert( cursor < s.size() );
+            if ( this->m_begin >= this->bufsize ) this->async_write();
+            if ( this->fail() ) break;
+            if ( wrap && cursor != 0 && cursor % this->wraplen == 0 ) {
+              this->m_buf[ this->m_begin++ ] = '\n';
+            }
+            len = std::min( s.size() - cursor,
+                static_cast< std::string::size_type >( this->bufsize - this->m_begin ) );
+            if ( wrap )
+              len = std::min( len, this->wraplen - cursor % this->wraplen );
+            std::copy( &s[ cursor ], &s[ cursor ] + len, this->m_buf + this->m_begin );
+            this->m_begin += len;
+            cursor += len;
+          }
+          return !this->fail();
+        }
+
+          inline bool
+        puts( char_type c ) noexcept
+        {
+          if ( this->fail() ) return false;
+          if ( this->m_begin >= this->bufsize ) this->async_write();
+          this->m_buf[ this->m_begin++ ] = c;
+          return !this->fail();
+        }
+
+          inline void
+        flush( ) noexcept
+        {
+          this->async_write( );
+          {
+            // wait until it is actually written to the file.
+            std::unique_lock< std::mutex > lock( *this->bufslock );
+            this->cv->wait( lock, [this]{ return !this->produced; } );
+          }
+        }
+      private:
+        /* Methods */
+          inline void
+        async_write( bool term=false ) noexcept
+        {
+          if ( this->fail() || this->terminate ) return;
+
+          {
+            std::unique_lock< std::mutex > lock( *this->bufslock );
+            this->cv->wait( lock, [this]{ return !this->produced; } );
+            this->m_end = this->w_end;
+            if ( !this->fail() ) {
+              this->w_end = this->m_begin;
+              std::copy( this->m_buf, this->m_buf + this->m_begin, this->w_buf );
+              this->produced = true;
+              if ( term ) this->terminate = true;  /**< XXX: only set here! */
+            }
+            this->m_begin = 0;
+          }
+          this->cv->notify_one();
+        }
+
+          inline void
+        writer( ) noexcept
+        {
+          bool term = false;
+          do {
+            {
+              std::unique_lock< std::mutex > lock( *this->bufslock );
+              this->cv->wait( lock, [this]{ return this->produced; } );
+              if ( !this->func( this->f, this->w_buf, this->w_end ) && this->w_end ) {
+                this->w_end = -1;
+              }
+              this->produced = false;
+              if ( this->terminate || this->w_end < 0 ) term = true;
+            }
+            this->cv->notify_one();
+          } while ( !term );
+        }
+
+          inline void
+        worker_join( )
+        {
+          this->async_write( true );
+          if ( this->worker.joinable() ) this->worker.join();
+        }
+
+          inline void
+        worker_start( )
+        {
+          this->worker = std::thread( &KStream::writer, this );
+        }
+    };
 
   template< typename TFile,
             typename TFunc >

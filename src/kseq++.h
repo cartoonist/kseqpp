@@ -53,20 +53,24 @@ namespace klibpp {
   template< typename TFile,
             typename TFunc >
     class KStream {  // kstream_t
+      public:
+        /* Typedefs */
+        using size_type = long int;
+        using char_type = char;
       protected:
         /* Separators */
-        constexpr static int SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
-        constexpr static int SEP_TAB = 1;    // isspace() && !' '
-        constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
-        constexpr static int SEP_MAX = 2;
+        constexpr static char_type SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
+        constexpr static char_type SEP_TAB = 1;    // isspace() && !' '
+        constexpr static char_type SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
+        constexpr static char_type SEP_MAX = 2;
         /* Consts */
-        constexpr static unsigned long int DEFAULT_BUFSIZE = 16384;
+        constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 16384;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
-        unsigned char* buf;                  /**< @brief character buffer */
-        long int bufsize;                    /**< @brief buffer size */
-        int begin;                           /**< @brief begin buffer index */
-        int end;                             /**< @brief end buffer index or error flag if -1 */
+        char_type* buf;                      /**< @brief character buffer */
+        size_type bufsize;                   /**< @brief buffer size */
+        size_type begin;                     /**< @brief begin buffer index */
+        size_type end;                       /**< @brief end buffer index or error flag if -1 */
         bool is_eof;                         /**< @brief eof flag */
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
@@ -79,8 +83,8 @@ namespace klibpp {
         KStream( TFile f_,
             TFunc func_,
             KStreamMode m_=KStreamMode::in,
-            unsigned long int bs_=DEFAULT_BUFSIZE )  // ks_init
-          : buf( new unsigned char[ bs_ ] ), bufsize( bs_ ),
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )  // ks_init
+          : buf( new char_type[ bs_ ] ), bufsize( bs_ ),
           wraplen( DEFAULT_WRAPLEN ), mode( m_ ),
           f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
@@ -89,7 +93,7 @@ namespace klibpp {
 
         KStream( TFile f_,
             TFunc func_,
-            unsigned long int bs_ )
+            std::make_unsigned_t< size_type > bs_ )
           : KStream( std::move( f_ ), std::move( func_ ), KStreamMode::in, bs_ )
         { }
 
@@ -178,7 +182,7 @@ namespace klibpp {
           inline KStream&
         operator>>( KSeq& rec )  // kseq_read
         {
-          int c;
+          char_type c;
           this->last = false;
           if ( !this->is_ready ) {  // then jump to the next header line
             while ( this->getc( c ) && c != '>' && c != '@' );
@@ -265,7 +269,7 @@ namespace klibpp {
         }
         /* Low-level methods */
           inline bool
-        getc( int& c ) noexcept  // ks_getc
+        getc( char_type& c ) noexcept  // ks_getc
         {
           // ready
           if ( this->begin < this->end ) {
@@ -312,14 +316,14 @@ namespace klibpp {
         }
 
           inline bool
-        getuntil( int delimiter, std::string& str, int *dret, bool append=false )  // ks_getuntil
+        getuntil( char_type delimiter, std::string& str, char_type *dret, bool append=false )  // ks_getuntil
           noexcept
         {
-          int c;
+          char_type c;
           bool gotany = false;
           if ( dret ) *dret = 0;
           if ( !append ) str.clear();
-          int i = -1;
+          size_type i = -1;
           do {
             if ( !this->getc( c ) ) break;
             --this->begin;

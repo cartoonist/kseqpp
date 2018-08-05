@@ -185,7 +185,7 @@ namespace klibpp {
           char_type c;
           this->last = false;
           if ( !this->is_ready ) {  // then jump to the next header line
-            while ( this->getc( c ) && c != '>' && c != '@' );
+            while ( ( c = this->getc( ) ) && c != '>' && c != '@' );
             if ( this->fail() ) return *this;
             this->is_ready = true;
           }  // else: the first header char has been read in the previous call
@@ -194,7 +194,7 @@ namespace klibpp {
           if ( c != '\n' ) {  // read FASTA/Q comment
             this->getuntil( KStream::SEP_LINE, rec.comment, nullptr );
           }
-          while ( this->getc( c ) && c != '>' && c != '@' && c != '+' ) {
+          while ( ( c = this->getc( ) ) && c != '>' && c != '@' && c != '+' ) {
             if ( c == '\n' ) continue;  // skip empty lines
             rec.seq += c;
             this->getuntil( KStream::SEP_LINE, rec.seq, nullptr, true ); // read the rest of the line
@@ -202,7 +202,7 @@ namespace klibpp {
           this->last = true;
           if ( c == '>' || c == '@' ) this->is_ready = true;  // the first header char has been read
           if ( c != '+' ) return *this;  // FASTA
-          while ( this->getc( c ) && c != '\n' );  // skip the rest of '+' line
+          while ( ( c = this->getc( ) ) && c != '\n' );  // skip the rest of '+' line
           if ( this->eof() ) {  // error: no quality string
             this->is_tqs = true;
             return *this;
@@ -268,25 +268,22 @@ namespace klibpp {
           return ret;
         }
         /* Low-level methods */
-          inline bool
-        getc( char_type& c ) noexcept  // ks_getc
+          inline char_type
+        getc( ) noexcept  // ks_getc
         {
-          // ready
-          if ( this->begin < this->end ) {
-            c = this->_nextc();
-            return true;
-          }
           // error
-          if ( this->err() || this->eof() ) return false;
+          if ( this->err() || this->eof() ) return 0;
           // fetch
-          this->begin = 0;
-          this->end = this->func( this->f, this->buf, this->bufsize );
-          if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
-            this->is_eof = true;
-            return false;
+          if ( this->begin >= this->end ) {
+            this->begin = 0;
+            this->end = this->func( this->f, this->buf, this->bufsize );
+            if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
+              this->is_eof = true;
+              return 0;
+            }
           }
-          c = this->_nextc();
-          return true;
+          // ready
+          return this->buf[ this->begin++ ];
         }
 
           inline bool
@@ -325,7 +322,7 @@ namespace klibpp {
           if ( !append ) str.clear();
           size_type i = -1;
           do {
-            if ( !this->getc( c ) ) break;
+            if ( !( c = this->getc( ) ) ) break;
             --this->begin;
             if ( delimiter == KStream::SEP_LINE ) {
               for ( i = this->begin; i < this->end; ++i ) {
@@ -353,8 +350,7 @@ namespace klibpp {
             }
 
             gotany = true;
-            str.resize( str.size() + i - this->begin );
-            std::copy( this->buf + this->begin, this->buf + i, str.end() - i + this->begin );
+            str.append( this->buf + this->begin, i - this->begin );
             this->begin = i + 1;
           } while ( i >= this->end );
 
@@ -366,13 +362,6 @@ namespace klibpp {
             str.pop_back();
           }
           return true;
-        }
-      private:
-        /* Methods */
-          inline int
-        _nextc( ) noexcept
-        {
-          return static_cast< int >( this->buf[ this->begin++ ] );
         }
     };
 

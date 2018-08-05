@@ -23,6 +23,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <ios>
+#include <vector>
+#include <string>
 
 // versioning
 #define KLIBPP_MAJOR 0
@@ -189,6 +191,31 @@ namespace klibpp {
         operator bool( ) const
         {
           return !this->fail();
+        }
+
+          inline std::vector< KSeq >
+        read( std::vector< KSeq >::size_type const size )
+        {
+          std::vector< KSeq > ret;
+          ret.reserve( size );
+          for ( std::vector< KSeq >::size_type i = 0; i < size; ++i ) {
+            ret.emplace_back();
+            *this >> ret.back();
+            if ( !( *this ) ) {
+              ret.pop_back();
+              break;
+            }
+          }
+          return ret;
+        }
+
+          inline std::vector< KSeq >
+        read_all( )
+        {
+          std::vector< KSeq > ret;
+          while ( ( ret.emplace_back(), true ) && *this >> ret.back() );
+          ret.pop_back();
+          return ret;
         }
         /* Low-level methods */
           inline bool

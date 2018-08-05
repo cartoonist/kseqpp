@@ -51,8 +51,7 @@ namespace klibpp {
   };
 
   template< typename TFile,
-            typename TFunc,
-            int TBufSize = 16384 >
+            typename TFunc >
     class KStream {  // kstream_t
       protected:
         /* Separators */
@@ -61,9 +60,11 @@ namespace klibpp {
         constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
         constexpr static int SEP_MAX = 2;
         /* Consts */
+        constexpr static unsigned long int DEFAULT_BUFSIZE = 16384;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
-        unsigned char buf[ TBufSize ];       /**< @brief character buffer */
+        unsigned char* buf;                  /**< @brief character buffer */
+        long int bufsize;                    /**< @brief buffer size */
         int begin;                           /**< @brief begin buffer index */
         int end;                             /**< @brief end buffer index or error flag if -1 */
         bool is_eof;                         /**< @brief eof flag */
@@ -75,18 +76,63 @@ namespace klibpp {
         TFile f;                             /**< @brief file handler */
         TFunc func;                          /**< @brief read/write function */
       public:
-        KStream( TFile f_, TFunc func_, KStreamMode m_=KStreamMode::in )  // ks_init
-          : wraplen( DEFAULT_WRAPLEN ), mode( m_ ), f( f_ ), func( func_ )
+        KStream( TFile f_,
+            TFunc func_,
+            KStreamMode m_=KStreamMode::in,
+            unsigned long int bs_=DEFAULT_BUFSIZE )  // ks_init
+          : buf( new unsigned char[ bs_ ] ), bufsize( bs_ ),
+          wraplen( DEFAULT_WRAPLEN ), mode( m_ ),
+          f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
           this->rewind();
         }
 
+        KStream( TFile f_,
+            TFunc func_,
+            unsigned long int bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), KStreamMode::in, bs_ )
+        { }
+
         KStream( KStream const& ) = delete;
         KStream& operator=( KStream const& ) = delete;
-        KStream( KStream&& ) = default;
-        KStream& operator=( KStream&& ) = default;
-        ~KStream( ) = default;
 
+        KStream( KStream&& other ) noexcept
+        {
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+        }
+
+        KStream& operator=( KStream&& other ) noexcept
+        {
+          if ( this == &other ) return *this;
+          delete[] this->buf;
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          return *this;
+        }
+
+        ~KStream( ) noexcept
+        {
+          delete[] this->buf;
+        }
         /* Mutators */
           inline void
         set_wraplen( unsigned int len )
@@ -230,7 +276,7 @@ namespace klibpp {
           if ( this->err() || this->eof() ) return false;
           // fetch
           this->begin = 0;
-          this->end = this->func( this->f, this->buf, TBufSize );
+          this->end = this->func( this->f, this->buf, this->bufsize );
           if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
             this->is_eof = true;
             return false;
@@ -331,15 +377,6 @@ namespace klibpp {
     make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
       return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ),
-          std::forward< Args >( args )... );
-    }
-
-  template< int TBufSize, typename TFile, typename TFunc, typename... Args >
-      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
-    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
-    {
-      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
           std::forward< TFile >( file ), std::forward< TFunc >( func ),
           std::forward< Args >( args )... );
     }

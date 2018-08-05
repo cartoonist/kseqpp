@@ -32,6 +32,18 @@
 #define KLIBPP_REVISION 1
 
 namespace klibpp {
+  template< typename TFile,
+            typename TFunc,
+            typename TSpec >
+              class KStream;
+
+  class KStreamBase_ {
+    protected:
+      /* Typedefs */
+      using size_type = long int;
+      using char_type = char;
+  };
+
   struct KSeq {  // kseq_t
     std::string name;
     std::string comment;
@@ -45,18 +57,23 @@ namespace klibpp {
     }
   };
 
-  enum KStreamMode {
-    in,
-    out,
-  };
+  namespace mode {
+    struct In_ { };
+    struct Out_ { };
+
+    constexpr In_ in;
+    constexpr Out_ out;
+  }  /* -----  end of namespace mode  ----- */
 
   template< typename TFile,
             typename TFunc >
-    class KStream {  // kstream_t
+    class KStream< TFile, TFunc, mode::In_ > : public KStreamBase_ {  // kstream_t
       public:
         /* Typedefs */
-        using size_type = long int;
-        using char_type = char;
+        using base_type = KStreamBase_;
+        using spec_type = mode::In_;
+        using size_type = base_type::size_type;
+        using char_type = base_type::char_type;
       protected:
         /* Separators */
         constexpr static char_type SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
@@ -65,7 +82,6 @@ namespace klibpp {
         constexpr static char_type SEP_MAX = 2;
         /* Consts */
         constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 16384;
-        constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
         char_type* buf;                      /**< @brief character buffer */
         size_type bufsize;                   /**< @brief buffer size */
@@ -75,17 +91,14 @@ namespace klibpp {
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
         bool last;                           /**< @brief last read was successful */
-        unsigned int wraplen;                /**< @brief line wrap length */
-        KStreamMode mode;                    /**< @brief stream mode */
         TFile f;                             /**< @brief file handler */
-        TFunc func;                          /**< @brief read/write function */
+        TFunc func;                          /**< @brief read function */
       public:
         KStream( TFile f_,
             TFunc func_,
-            KStreamMode m_=KStreamMode::in,
+            spec_type=mode::in,
             std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )  // ks_init
           : buf( new char_type[ bs_ ] ), bufsize( bs_ ),
-          wraplen( DEFAULT_WRAPLEN ), mode( m_ ),
           f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
           this->begin = 0;
@@ -99,7 +112,7 @@ namespace klibpp {
         KStream( TFile f_,
             TFunc func_,
             std::make_unsigned_t< size_type > bs_ )
-          : KStream( std::move( f_ ), std::move( func_ ), KStreamMode::in, bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::in, bs_ )
         { }
 
         KStream( KStream const& ) = delete;
@@ -141,12 +154,6 @@ namespace klibpp {
         ~KStream( ) noexcept
         {
           delete[] this->buf;
-        }
-        /* Mutators */
-          inline void
-        set_wraplen( unsigned int len )
-        {
-          this->wraplen = len;
         }
         /* Methods */
           inline bool
@@ -212,26 +219,6 @@ namespace klibpp {
           return *this;
         }
 
-          inline KStream&
-        operator<<( const KSeq& rec )
-        {
-          if ( rec.qual.empty() ) this->puts( ">" );  // FASTA record
-          else this->puts( "@" );  // FASTQ record
-          this->puts( rec.name );
-          if ( !rec.comment.empty() ) {
-            this->puts( " " );
-            this->puts( rec.comment );
-          }
-          this->puts( "\n" );
-          this->puts( rec.seq, true );
-          if ( !rec.qual.empty() ) {
-            this->puts( "\n+\n" );
-            this->puts( rec.qual, true );
-          }
-          this->puts( "\n" );
-          return *this;
-        }
-
         operator bool( ) const
         {
           return !this->fail();
@@ -278,32 +265,6 @@ namespace klibpp {
           }
           // ready
           return this->buf[ this->begin++ ];
-        }
-
-          inline bool
-        puts( std::string const& s, bool wrap=false ) noexcept
-        {
-          if ( this->err() ) return false;
-
-          std::string::size_type cursor = 0;
-          std::string::size_type len = 0;
-          while ( cursor != s.size() ) {
-            assert( cursor < s.size() );
-            len = s.size() - cursor;
-            if ( wrap && this->wraplen < len ) len = this->wraplen;
-            if ( wrap && cursor != 0 ) {
-              if ( this->func( this->f, "\n", 1 ) == 0 ) {
-                this->end = -1;
-                break;
-              }
-            }
-            if ( this->func( this->f, &s[ cursor ], len ) == 0 ) {
-              this->end = -1;
-              break;
-            }
-            cursor += len;
-          }
-          return !this->err();
         }
 
           inline bool
@@ -359,12 +320,12 @@ namespace klibpp {
         }
     };
 
-  template< typename TFile, typename TFunc, typename... Args >
-      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc > >
-    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
+  template< typename TFile, typename TFunc, typename TSpec, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >
+    make_kstream( TFile&& file, TFunc&& func, TSpec, Args&&... args )
     {
-      return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), TSpec(),
           std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */

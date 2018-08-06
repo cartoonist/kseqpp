@@ -19,13 +19,14 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <fcntl.h>
 
 #include "kseq++.h"
 #include "kseq.h"
 
 #define SEQ_TRUNC_LEN 20
 #define MAX_SHOWN_REC 10
-#define SEQ_WRAPLEN 20
+#define SEQ_WRAPLEN 100
 #define DEFAULT_TMPDIR "/tmp"
 #define TMPFILE_TEMPLATE "/kseqpp-XXXXXX"
 
@@ -120,12 +121,14 @@ main( int argc, char* argv[] )
     return EXIT_FAILURE;
   }
 
-  gzFile ifp = gzopen( argv[1], "r" );
+  // Using a file in TMPDIR for writing output.
   std::string tmpfile = get_tmpfile();
-  gzFile ofp = gzopen( tmpfile.c_str(), "w" );
   std::cout << "Output temporary file: " << tmpfile << std::endl;
-  auto iks = make_kstream( ifp, gzread, KStreamMode::in );
-  auto oks = make_kstream( ofp, gzwrite, KStreamMode::out );
+
+  gzFile ifp = gzopen( argv[1], "r" );
+  int ofd = open( tmpfile.c_str(), O_CREAT | O_WRONLY );
+  auto iks = make_kstream( ifp, gzread, mode::in );
+  auto oks = make_kstream( ofd, write, mode::out );
   oks.set_wraplen( SEQ_WRAPLEN );
   KSeq record;
   size_t count = 0;
@@ -144,20 +147,21 @@ main( int argc, char* argv[] )
     }
     std::cout << "Record " << count << ": " << record.name;
     if ( ! record.comment.empty() ) std::cout << " [" << record.comment << "]";
-    std::cout << std::endl;
+    std::cout << '\n';
     print_trunc( "  seq:  ", record.seq );
     if ( ! record.qual.empty() ) print_trunc( "  qual: ", record.seq );
   }
   if ( count > MAX_SHOWN_REC ) {
-    std::cout << "... and " << count - MAX_SHOWN_REC << " other records." << std::endl;
+    std::cout << "... and " << count - MAX_SHOWN_REC << " other records." << '\n';
   }
-  std::cout << "total length: " << total_len << std::endl;
-  std::cout << "minimum length: " << min_len << std::endl;
-  std::cout << "maximum length: " << max_len << std::endl;
-  std::cout << "average length: " << std::fixed << std::setprecision( 1 )
+  std::cout << "total length: " << total_len << '\n'
+            << "minimum length: " << min_len << '\n'
+            << "maximum length: " << max_len << '\n'
+            << "average length: " << std::fixed << std::setprecision( 1 )
             << total_len / static_cast< double >( count ) << std::endl;
+  oks << kend;  // flush the buffer before closing the file.
+  close(ofd);
   gzclose(ifp);
-  gzclose(ofp);
   std::cout << "Verifying..." << std::endl;
   check( argv[1], count, total_len, min_len, max_len );
   std::cout << "PASSED" << std::endl;

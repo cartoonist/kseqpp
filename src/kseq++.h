@@ -31,8 +31,8 @@
 
 // versioning
 #define KLIBPP_MAJOR 0
-#define KLIBPP_MINOR 0
-#define KLIBPP_REVISION 1
+#define KLIBPP_MINOR 1
+#define KLIBPP_REVISION 0
 
 namespace klibpp {
   template< typename TFile,

@@ -61,20 +61,18 @@ main( int argc, char* argv[] )
   }
   {
     fp = gzopen( argv[1], "r" );
-    auto ks = make_kstream< SMALL_BUF_SIZE >( fp, gzread );
-    KSeq record;
-    int c;
+    auto ks = make_ikstream( fp, gzread, SMALL_BUF_SIZE );
     t = clock();
-    while ( ks.getc( c ) );
+    while ( ks.getc( ) );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[ks_getc] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );
   }
   {
     fp = gzopen( argv[1], "r" );
-    auto ks = make_kstream< SMALL_BUF_SIZE >( fp, gzread );
+    auto ks = make_kstream( fp, gzread, mode::in, SMALL_BUF_SIZE );
     std::string s;
-    int dret;
+    char dret;
     t = clock();
     while ( ks.getuntil( '\n', s, &dret ) );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
@@ -111,11 +109,12 @@ main( int argc, char* argv[] )
     fclose( fp );
   }
   {
-    int fd, dret;
+    int fd;
+    char dret;
     std::string s;
     t = clock();
     fd = open( argv[1], O_RDONLY );
-    auto ks = make_kstream< BIG_BUF_SIZE >( fd, read );
+    auto ks = make_ikstream( fd, read, BIG_BUF_SIZE );
     while ( ks.getuntil( '\n', s, &dret ) );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[kstream] " << std::setprecision(3) << d << " sec" << std::endl;
@@ -126,8 +125,8 @@ main( int argc, char* argv[] )
     seqan::CharString name;
     seqan::CharString str;
     seqan::CharString qual;
-    t = clock();
     open( f, argv[1] );
+    t = clock();
     while ( !atEnd( f ) ) readRecord( name, str, qual, f );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[seqan] " << std::setprecision(3) << d << " sec" << std::endl;
@@ -136,9 +135,9 @@ main( int argc, char* argv[] )
   {
     kseq_t *seq;
     int l;
-    t = clock();
     fp = gzopen( argv[1], "r" );
     seq = kseq_init( fp );
+    t = clock();
     while ( ( l = kseq_read( seq ) ) >= 0 );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[kseq] " << std::setprecision(3) << d << " sec" << std::endl;
@@ -147,56 +146,65 @@ main( int argc, char* argv[] )
   }
   {
     KSeq record;
+    int fd = open( argv[1], O_RDONLY );
+    auto ks = make_ikstream( fd, read );
     t = clock();
-    fp = gzopen( argv[1], "r" );
-    auto ks = make_kstream( fp, gzread );
-    while (ks >> record);
+    while ( ks >> record );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
+    close( fd );
+  }
+  std::vector< KSeq > records;
+  {
+    fp = gzopen( argv[1], "r" );
+    auto iks = make_kstream( fp, gzread, mode::in );
+    t = clock();
+    records = iks.read( );
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[kseq++/read_all] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );
+  }
+  seqan::StringSet< seqan::CharString > names;
+  seqan::StringSet< seqan::CharString > seqs;
+  seqan::StringSet< seqan::CharString > quals;
+  {
+    seqan::SeqFileIn i_file;
+    open( i_file, argv[1] );
+    t = clock();
+    readRecords( names, seqs, quals, i_file );
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[seqan/readRecords] " << std::setprecision(3) << d << " sec" << std::endl;
+    close( i_file );
   }
   std::cerr << "=== WRITE TESTS ===" << std::endl;
   {
-    std::vector< KSeq > records;
-    KSeq rec;
-    fp = gzopen( argv[1], "r" );
-    auto iks = make_kstream( fp, gzread );
-    while (iks >> rec) records.push_back( std::move( rec ) );
-    gzclose( fp );
-    {
-      t = clock();
-      int fd = open( argv[2], O_WRONLY );
-      auto oks = make_kstream( fd, write );
-      for ( const auto& r : records ) oks << r;
-      auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
-      std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
-      close( fd );
-    }
-    {
-      t = clock();
-      fp = gzopen( argv[2], "w" );
-      auto oks = make_kstream( fp, gzwrite );
-      for ( const auto& r : records ) oks << r;
-      auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
-      std::cerr << "[kseq++/gz] " << std::setprecision(3) << d << " sec" << std::endl;
-      gzclose( fp );
-    }
-  }
-  {
-    seqan::SeqFileIn i_file;
-    seqan::StringSet< seqan::CharString > names;
-    seqan::StringSet< seqan::CharString > seqs;
-    seqan::StringSet< seqan::CharString > quals;
-    open( i_file, argv[1] );
-    while ( !atEnd( i_file ) ) readRecords( names, seqs, quals, i_file );
-    close( i_file );
     seqan::SeqFileOut o_file;
-    t = clock();
     open( o_file, argv[1], seqan::FileOpenMode::OPEN_WRONLY );
+    t = clock();
     writeRecords( o_file, names, seqs, quals );
     close( o_file );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[seqan] " << std::setprecision(3) << d << " sec" << std::endl;
+  }
+  {
+    int fd = open( argv[2], O_CREAT | O_WRONLY );
+    auto oks = make_okstream( fd, write );
+    t = clock();
+    for ( const auto& r : records ) oks << r;
+    oks << kend;
+    close( fd );
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
+  }
+  {
+    fp = gzopen( argv[2], "w" );
+    auto oks = make_okstream( fp, gzwrite );
+    t = clock();
+    for ( const auto& r : records ) oks << r;
+    oks << kend;
+    gzclose( fp );
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[kseq++/gz] " << std::setprecision(3) << d << " sec" << std::endl;
   }
 
   return EXIT_SUCCESS;

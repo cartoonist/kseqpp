@@ -23,13 +23,30 @@
 #include <cstring>
 #include <cstdlib>
 #include <ios>
+#include <vector>
+#include <string>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 // versioning
 #define KLIBPP_MAJOR 0
-#define KLIBPP_MINOR 0
-#define KLIBPP_REVISION 1
+#define KLIBPP_MINOR 1
+#define KLIBPP_REVISION 0
 
 namespace klibpp {
+  template< typename TFile,
+            typename TFunc,
+            typename TSpec >
+              class KStream;
+
+  class KStreamBase_ {
+    protected:
+      /* Typedefs */
+      using size_type = long int;
+      using char_type = char;
+  };
+
   struct KSeq {  // kseq_t
     std::string name;
     std::string comment;
@@ -43,53 +60,357 @@ namespace klibpp {
     }
   };
 
-  enum KStreamMode {
-    in,
-    out,
-  };
+  namespace mode {
+    struct In_ { };
+    struct Out_ { };
+
+    constexpr In_ in;
+    constexpr Out_ out;
+  }  /* -----  end of namespace mode  ----- */
+
+  struct KEnd_ {};
+  constexpr KEnd_ kend;
 
   template< typename TFile,
-            typename TFunc,
-            int TBufSize = 16384 >
-    class KStream {  // kstream_t
+            typename TFunc >
+    class KStream< TFile, TFunc, mode::Out_ > : public KStreamBase_ {
+      public:
+        /* Typedefs */
+        using base_type = KStreamBase_;
+        using spec_type = mode::Out_;
+        using size_type = base_type::size_type;
+        using char_type = base_type::char_type;
       protected:
-        /* Separators */
-        constexpr static int SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
-        constexpr static int SEP_TAB = 1;    // isspace() && !' '
-        constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
-        constexpr static int SEP_MAX = 2;
         /* Consts */
+        constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 131072;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
-        unsigned char buf[ TBufSize ];       /**< @brief character buffer */
-        int begin;                           /**< @brief begin buffer index */
-        int end;                             /**< @brief end buffer index or error flag if -1 */
-        bool is_eof;                         /**< @brief eof flag */
-        bool is_tqs;                         /**< @brief truncated quality string flag */
-        bool is_ready;                       /**< @brief next record ready flag */
-        bool last;                           /**< @brief last read was successful */
-        unsigned int wraplen;                /**< @brief line wrap length */
-        KStreamMode mode;                    /**< @brief stream mode */
-        TFile f;                             /**< @brief file handler */
-        TFunc func;                          /**< @brief read/write function */
+        char_type* m_buf;                               /**< @brief character buffer */
+        char_type* w_buf;                               /**< @brief second character buffer */
+        size_type bufsize;                              /**< @brief buffer size */
+        std::thread worker;                             /**< @brief worker thread */
+        std::unique_ptr< std::mutex > bufslock;         /**< @brief buffers mutex */
+        std::unique_ptr< std::condition_variable > cv;  /**< @brief consumer/producer condition variable */
+        bool terminate;                                 /**< @brief thread terminate flag XXX: set before notify */
+        bool produced;                                  /**< @brief produced flag. XXX: SHARED (data race) */
+        size_type m_begin;                              /**< @brief begin buffer index */
+        size_type m_end;                                /**< @brief end buffer index or error flag if -1 */
+        size_type w_end;                                /**< @brief end second buffer index or error flag if -1 */
+        unsigned int wraplen;                           /**< @brief line wrap length */
+        TFile f;                                        /**< @brief file handler */
+        TFunc func;                                     /**< @brief write function */
       public:
-        KStream( TFile f_, TFunc func_, KStreamMode m_=KStreamMode::in )  // ks_init
-          : wraplen( DEFAULT_WRAPLEN ), mode( m_ ), f( f_ ), func( func_ )
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type=mode::out,
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )
+          : m_buf( new char_type[ bs_ ] ), w_buf( new char_type[ bs_ ] ),
+          bufsize( bs_ ), bufslock( new std::mutex ), cv( new std::condition_variable ),
+          wraplen( DEFAULT_WRAPLEN ), f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
-          this->rewind();
+          this->m_begin = 0;
+          this->m_end = 0;
+          this->terminate = false;
+          this->produced = false;
+          this->w_end = 0;
+          this->worker_start();
         }
+
+        KStream( TFile f_,
+            TFunc func_,
+            std::make_unsigned_t< size_type > bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, bs_ )
+        { }
 
         KStream( KStream const& ) = delete;
         KStream& operator=( KStream const& ) = delete;
-        KStream( KStream&& ) = default;
-        KStream& operator=( KStream&& ) = default;
-        ~KStream( ) = default;
 
+        KStream( KStream&& other ) noexcept
+        {
+          other.worker_join();
+          this->m_buf = other.m_buf;
+          this->w_buf = other.w_buf;
+          other.m_buf = nullptr;
+          other.w_buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->bufslock = std::move( other.bufslock );
+          this->cv = std::move( other.cv );
+          this->terminate = false;
+          this->produced = other.produced;
+          this->m_begin = other.m_begin;
+          this->m_end = other.m_end;
+          this->w_end = other.w_end;
+          this->wraplen = other.wraplen;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          this->worker_start();
+        }
+
+        KStream& operator=( KStream&& other ) noexcept
+        {
+          if ( this == &other ) return *this;
+          other.worker_join();
+          delete[] this->m_buf;
+          delete[] this->w_buf;
+          this->m_buf = other.m_buf;
+          this->w_buf = other.w_buf;
+          other.m_buf = nullptr;
+          other.w_buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->bufslock = std::move( other.bufslock );
+          this->cv = std::move( other.cv );
+          this->terminate = false;
+          this->produced = other.produced;
+          this->m_begin = other.m_begin;
+          this->m_end = other.m_end;
+          this->w_end = other.w_end;
+          this->wraplen = other.wraplen;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          this->worker_start();
+          return *this;
+        }
+
+        ~KStream( ) noexcept
+        {
+          this->worker_join();
+          delete[] this->m_buf;
+          delete[] this->w_buf;
+        }
         /* Mutators */
           inline void
         set_wraplen( unsigned int len )
         {
           this->wraplen = len;
+        }
+        /* Methods */
+          inline bool
+        fail( ) const
+        {
+          return this->m_end == -1;
+        }
+
+          inline KStream&
+        operator<<( const KSeq& rec )
+        {
+          if ( rec.qual.empty() ) this->puts( '>' );  // FASTA record
+          else this->puts( '@' );  // FASTQ record
+          this->puts( rec.name );
+          if ( !rec.comment.empty() ) {
+            this->puts( ' ' );
+            this->puts( rec.comment );
+          }
+          this->puts( '\n' );
+          this->puts( rec.seq, true );
+          if ( !rec.qual.empty() ) {
+            this->puts( '\n' );
+            this->puts( '+' );
+            this->puts( '\n' );
+            this->puts( rec.qual, true );
+          }
+          this->puts( '\n' );
+          return *this;
+        }
+
+          inline KStream&
+        operator<<( KEnd_ )
+        {
+          this->flush();
+          return *this;
+        }
+
+        operator bool( ) const
+        {
+          return !this->fail();
+        }
+        /* Low-level methods */
+          inline bool
+        puts( std::string const& s, bool wrap=false ) noexcept
+        {
+          if ( this->fail() ) return false;
+
+          std::string::size_type cursor = 0;
+          std::string::size_type len = 0;
+          while ( cursor != s.size() ) {
+            assert( cursor < s.size() );
+            if ( this->m_begin >= this->bufsize ) this->async_write();
+            if ( this->fail() ) break;
+            if ( wrap && cursor != 0 && cursor % this->wraplen == 0 ) {
+              this->m_buf[ this->m_begin++ ] = '\n';
+            }
+            len = std::min( s.size() - cursor,
+                static_cast< std::string::size_type >( this->bufsize - this->m_begin ) );
+            if ( wrap )
+              len = std::min( len, this->wraplen - cursor % this->wraplen );
+            std::copy( &s[ cursor ], &s[ cursor ] + len, this->m_buf + this->m_begin );
+            this->m_begin += len;
+            cursor += len;
+          }
+          return !this->fail();
+        }
+
+          inline bool
+        puts( char_type c ) noexcept
+        {
+          if ( this->fail() ) return false;
+          if ( this->m_begin >= this->bufsize ) this->async_write();
+          this->m_buf[ this->m_begin++ ] = c;
+          return !this->fail();
+        }
+
+          inline void
+        flush( ) noexcept
+        {
+          this->async_write( );
+          {
+            // wait until it is actually written to the file.
+            std::unique_lock< std::mutex > lock( *this->bufslock );
+            this->cv->wait( lock, [this]{ return !this->produced; } );
+          }
+        }
+      private:
+        /* Methods */
+          inline void
+        async_write( bool term=false ) noexcept
+        {
+          if ( this->fail() || this->terminate ) return;
+
+          {
+            std::unique_lock< std::mutex > lock( *this->bufslock );
+            this->cv->wait( lock, [this]{ return !this->produced; } );
+            this->m_end = this->w_end;
+            if ( !this->fail() ) {
+              this->w_end = this->m_begin;
+              std::copy( this->m_buf, this->m_buf + this->m_begin, this->w_buf );
+              this->produced = true;
+              if ( term ) this->terminate = true;  /**< XXX: only set here! */
+            }
+            this->m_begin = 0;
+          }
+          this->cv->notify_one();
+        }
+
+          inline void
+        writer( ) noexcept
+        {
+          bool term = false;
+          do {
+            {
+              std::unique_lock< std::mutex > lock( *this->bufslock );
+              this->cv->wait( lock, [this]{ return this->produced; } );
+              if ( !this->func( this->f, this->w_buf, this->w_end ) && this->w_end ) {
+                this->w_end = -1;
+              }
+              this->produced = false;
+              if ( this->terminate || this->w_end < 0 ) term = true;
+            }
+            this->cv->notify_one();
+          } while ( !term );
+        }
+
+          inline void
+        worker_join( )
+        {
+          this->async_write( true );
+          if ( this->worker.joinable() ) this->worker.join();
+        }
+
+          inline void
+        worker_start( )
+        {
+          this->worker = std::thread( &KStream::writer, this );
+        }
+    };
+
+  template< typename TFile,
+            typename TFunc >
+    class KStream< TFile, TFunc, mode::In_ > : public KStreamBase_ {  // kstream_t
+      public:
+        /* Typedefs */
+        using base_type = KStreamBase_;
+        using spec_type = mode::In_;
+        using size_type = base_type::size_type;
+        using char_type = base_type::char_type;
+      protected:
+        /* Separators */
+        constexpr static char_type SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
+        constexpr static char_type SEP_TAB = 1;    // isspace() && !' '
+        constexpr static char_type SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
+        constexpr static char_type SEP_MAX = 2;
+        /* Consts */
+        constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 16384;
+        /* Data members */
+        char_type* buf;                      /**< @brief character buffer */
+        size_type bufsize;                   /**< @brief buffer size */
+        size_type begin;                     /**< @brief begin buffer index */
+        size_type end;                       /**< @brief end buffer index or error flag if -1 */
+        bool is_eof;                         /**< @brief eof flag */
+        bool is_tqs;                         /**< @brief truncated quality string flag */
+        bool is_ready;                       /**< @brief next record ready flag */
+        bool last;                           /**< @brief last read was successful */
+        TFile f;                             /**< @brief file handler */
+        TFunc func;                          /**< @brief read function */
+      public:
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type=mode::in,
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )  // ks_init
+          : buf( new char_type[ bs_ ] ), bufsize( bs_ ),
+          f( std::move( f_ ) ), func( std::move(  func_  ) )
+        {
+          this->begin = 0;
+          this->end = 0;
+          this->is_eof = false;
+          this->is_tqs = false;
+          this->is_ready = false;
+          this->last = false;
+        }
+
+        KStream( TFile f_,
+            TFunc func_,
+            std::make_unsigned_t< size_type > bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::in, bs_ )
+        { }
+
+        KStream( KStream const& ) = delete;
+        KStream& operator=( KStream const& ) = delete;
+
+        KStream( KStream&& other ) noexcept
+        {
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+        }
+
+        KStream& operator=( KStream&& other ) noexcept
+        {
+          if ( this == &other ) return *this;
+          delete[] this->buf;
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          return *this;
+        }
+
+        ~KStream( ) noexcept
+        {
+          delete[] this->buf;
         }
         /* Methods */
           inline bool
@@ -116,24 +437,13 @@ namespace klibpp {
           return this->err() || this->tqs() || ( this->eof() && !this->last );
         }
 
-          inline void
-        rewind( )  // ks_rewind
-        {
-          this->begin = 0;
-          this->end = 0;
-          this->is_eof = false;
-          this->is_tqs = false;
-          this->is_ready = false;
-          this->last = false;
-        }
-
           inline KStream&
         operator>>( KSeq& rec )  // kseq_read
         {
-          int c;
+          char_type c;
           this->last = false;
           if ( !this->is_ready ) {  // then jump to the next header line
-            while ( this->getc( c ) && c != '>' && c != '@' );
+            while ( ( c = this->getc( ) ) && c != '>' && c != '@' );
             if ( this->fail() ) return *this;
             this->is_ready = true;
           }  // else: the first header char has been read in the previous call
@@ -142,7 +452,7 @@ namespace klibpp {
           if ( c != '\n' ) {  // read FASTA/Q comment
             this->getuntil( KStream::SEP_LINE, rec.comment, nullptr );
           }
-          while ( this->getc( c ) && c != '>' && c != '@' && c != '+' ) {
+          while ( ( c = this->getc( ) ) && c != '>' && c != '@' && c != '+' ) {
             if ( c == '\n' ) continue;  // skip empty lines
             rec.seq += c;
             this->getuntil( KStream::SEP_LINE, rec.seq, nullptr, true ); // read the rest of the line
@@ -150,7 +460,7 @@ namespace klibpp {
           this->last = true;
           if ( c == '>' || c == '@' ) this->is_ready = true;  // the first header char has been read
           if ( c != '+' ) return *this;  // FASTA
-          while ( this->getc( c ) && c != '\n' );  // skip the rest of '+' line
+          while ( ( c = this->getc( ) ) && c != '\n' );  // skip the rest of '+' line
           if ( this->eof() ) {  // error: no quality string
             this->is_tqs = true;
             return *this;
@@ -166,89 +476,65 @@ namespace klibpp {
           return *this;
         }
 
-          inline KStream&
-        operator<<( const KSeq& rec )
-        {
-          if ( rec.qual.empty() ) this->puts( ">" );  // FASTA record
-          else this->puts( "@" );  // FASTQ record
-          this->puts( rec.name );
-          if ( !rec.comment.empty() ) {
-            this->puts( " " );
-            this->puts( rec.comment );
-          }
-          this->puts( "\n" );
-          this->puts( rec.seq, true );
-          if ( !rec.qual.empty() ) {
-            this->puts( "\n+\n" );
-            this->puts( rec.qual, true );
-          }
-          this->puts( "\n" );
-          return *this;
-        }
-
         operator bool( ) const
         {
           return !this->fail();
         }
-        /* Low-level methods */
-          inline bool
-        getc( int& c ) noexcept  // ks_getc
-        {
-          // ready
-          if ( this->begin < this->end ) {
-            c = this->_nextc();
-            return true;
-          }
-          // error
-          if ( this->err() || this->eof() ) return false;
-          // fetch
-          this->begin = 0;
-          this->end = this->func( this->f, this->buf, TBufSize );
-          if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
-            this->is_eof = true;
-            return false;
-          }
-          c = this->_nextc();
-          return true;
-        }
 
-          inline bool
-        puts( std::string const& s, bool wrap=false ) noexcept
+          inline std::vector< KSeq >
+        read( std::vector< KSeq >::size_type const size )
         {
-          if ( this->err() ) return false;
-
-          std::string::size_type cursor = 0;
-          std::string::size_type len = 0;
-          while ( cursor != s.size() ) {
-            assert( cursor < s.size() );
-            len = s.size() - cursor;
-            if ( wrap && this->wraplen < len ) len = this->wraplen;
-            if ( wrap && cursor != 0 ) {
-              if ( this->func( this->f, "\n", 1 ) == 0 ) {
-                this->end = -1;
-                break;
-              }
-            }
-            if ( this->func( this->f, &s[ cursor ], len ) == 0 ) {
-              this->end = -1;
+          std::vector< KSeq > ret;
+          ret.reserve( size );
+          for ( std::vector< KSeq >::size_type i = 0; i < size; ++i ) {
+            ret.emplace_back();
+            *this >> ret.back();
+            if ( !( *this ) ) {
+              ret.pop_back();
               break;
             }
-            cursor += len;
           }
-          return !this->err();
+          return ret;
+        }
+
+          inline std::vector< KSeq >
+        read( )
+        {
+          std::vector< KSeq > ret;
+          while ( ( ret.emplace_back(), true ) && *this >> ret.back() );
+          ret.pop_back();
+          return ret;
+        }
+        /* Low-level methods */
+          inline char_type
+        getc( ) noexcept  // ks_getc
+        {
+          // error
+          if ( this->err() || this->eof() ) return 0;
+          // fetch
+          if ( this->begin >= this->end ) {
+            this->begin = 0;
+            this->end = this->func( this->f, this->buf, this->bufsize );
+            if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
+              this->is_eof = true;
+              return 0;
+            }
+          }
+          // ready
+          return this->buf[ this->begin++ ];
         }
 
           inline bool
-        getuntil( int delimiter, std::string& str, int *dret, bool append=false )  // ks_getuntil
+        getuntil( char_type delimiter, std::string& str, char_type *dret, bool append=false )  // ks_getuntil
           noexcept
         {
-          int c;
+          char_type c;
           bool gotany = false;
           if ( dret ) *dret = 0;
           if ( !append ) str.clear();
-          int i = -1;
+          size_type i = -1;
           do {
-            if ( !this->getc( c ) ) break;
+            if ( !( c = this->getc( ) ) ) break;
             --this->begin;
             if ( delimiter == KStream::SEP_LINE ) {
               for ( i = this->begin; i < this->end; ++i ) {
@@ -276,8 +562,7 @@ namespace klibpp {
             }
 
             gotany = true;
-            str.resize( str.size() + i - this->begin );
-            std::copy( this->buf + this->begin, this->buf + i, str.end() - i + this->begin );
+            str.append( this->buf + this->begin, i - this->begin );
             this->begin = i + 1;
           } while ( i >= this->end );
 
@@ -290,30 +575,38 @@ namespace klibpp {
           }
           return true;
         }
-      private:
-        /* Methods */
-          inline int
-        _nextc( ) noexcept
-        {
-          return static_cast< int >( this->buf[ this->begin++ ] );
-        }
     };
 
-  template< typename TFile, typename TFunc, typename... Args >
-      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc > >
-    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
+  template< typename TFile, typename TFunc >
+    using KStreamIn = KStream< TFile, TFunc, mode::In_ >;
+
+  template< typename TFile, typename TFunc >
+    using KStreamOut = KStream< TFile, TFunc, mode::Out_ >;
+
+  template< typename TFile, typename TFunc, typename TSpec, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >
+    make_kstream( TFile&& file, TFunc&& func, TSpec, Args&&... args )
     {
-      return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), TSpec(),
           std::forward< Args >( args )... );
     }
 
-  template< int TBufSize, typename TFile, typename TFunc, typename... Args >
-      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
-    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
+  template< typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::In_ >
+    make_ikstream( TFile&& file, TFunc&& func, Args&&... args )
     {
-      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ),
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::In_ >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), mode::in,
+          std::forward< Args >( args )... );
+    }
+
+  template< typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::Out_ >
+    make_okstream( TFile&& file, TFunc&& func, Args&&... args )
+    {
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::Out_ >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), mode::out,
           std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */

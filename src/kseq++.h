@@ -51,21 +51,26 @@ namespace klibpp {
   };
 
   template< typename TFile,
-            typename TFunc,
-            int TBufSize = 16384 >
+            typename TFunc >
     class KStream {  // kstream_t
+      public:
+        /* Typedefs */
+        using size_type = long int;
+        using char_type = char;
       protected:
         /* Separators */
-        constexpr static int SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
-        constexpr static int SEP_TAB = 1;    // isspace() && !' '
-        constexpr static int SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
-        constexpr static int SEP_MAX = 2;
+        constexpr static char_type SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
+        constexpr static char_type SEP_TAB = 1;    // isspace() && !' '
+        constexpr static char_type SEP_LINE = 2;   // line separator: "\n" (Unix) or "\r\n" (Windows)
+        constexpr static char_type SEP_MAX = 2;
         /* Consts */
+        constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 16384;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
         /* Data members */
-        unsigned char buf[ TBufSize ];       /**< @brief character buffer */
-        int begin;                           /**< @brief begin buffer index */
-        int end;                             /**< @brief end buffer index or error flag if -1 */
+        char_type* buf;                      /**< @brief character buffer */
+        size_type bufsize;                   /**< @brief buffer size */
+        size_type begin;                     /**< @brief begin buffer index */
+        size_type end;                       /**< @brief end buffer index or error flag if -1 */
         bool is_eof;                         /**< @brief eof flag */
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
@@ -75,18 +80,68 @@ namespace klibpp {
         TFile f;                             /**< @brief file handler */
         TFunc func;                          /**< @brief read/write function */
       public:
-        KStream( TFile f_, TFunc func_, KStreamMode m_=KStreamMode::in )  // ks_init
-          : wraplen( DEFAULT_WRAPLEN ), mode( m_ ), f( f_ ), func( func_ )
+        KStream( TFile f_,
+            TFunc func_,
+            KStreamMode m_=KStreamMode::in,
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )  // ks_init
+          : buf( new char_type[ bs_ ] ), bufsize( bs_ ),
+          wraplen( DEFAULT_WRAPLEN ), mode( m_ ),
+          f( std::move( f_ ) ), func( std::move(  func_  ) )
         {
-          this->rewind();
+          this->begin = 0;
+          this->end = 0;
+          this->is_eof = false;
+          this->is_tqs = false;
+          this->is_ready = false;
+          this->last = false;
         }
+
+        KStream( TFile f_,
+            TFunc func_,
+            std::make_unsigned_t< size_type > bs_ )
+          : KStream( std::move( f_ ), std::move( func_ ), KStreamMode::in, bs_ )
+        { }
 
         KStream( KStream const& ) = delete;
         KStream& operator=( KStream const& ) = delete;
-        KStream( KStream&& ) = default;
-        KStream& operator=( KStream&& ) = default;
-        ~KStream( ) = default;
 
+        KStream( KStream&& other ) noexcept
+        {
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+        }
+
+        KStream& operator=( KStream&& other ) noexcept
+        {
+          if ( this == &other ) return *this;
+          delete[] this->buf;
+          this->buf = other.buf;
+          other.buf = nullptr;
+          this->bufsize = other.bufsize;
+          this->begin = other.begin;
+          this->end = other.end;
+          this->is_eof = other.is_eof;
+          this->is_tqs = other.is_tqs;
+          this->is_ready = other.is_ready;
+          this->last = other.last;
+          this->f = std::move( other.f );
+          this->func = std::move( other.func );
+          return *this;
+        }
+
+        ~KStream( ) noexcept
+        {
+          delete[] this->buf;
+        }
         /* Mutators */
           inline void
         set_wraplen( unsigned int len )
@@ -118,24 +173,13 @@ namespace klibpp {
           return this->err() || this->tqs() || ( this->eof() && !this->last );
         }
 
-          inline void
-        rewind( )  // ks_rewind
-        {
-          this->begin = 0;
-          this->end = 0;
-          this->is_eof = false;
-          this->is_tqs = false;
-          this->is_ready = false;
-          this->last = false;
-        }
-
           inline KStream&
         operator>>( KSeq& rec )  // kseq_read
         {
-          int c;
+          char_type c;
           this->last = false;
           if ( !this->is_ready ) {  // then jump to the next header line
-            while ( this->getc( c ) && c != '>' && c != '@' );
+            while ( ( c = this->getc( ) ) && c != '>' && c != '@' );
             if ( this->fail() ) return *this;
             this->is_ready = true;
           }  // else: the first header char has been read in the previous call
@@ -144,7 +188,7 @@ namespace klibpp {
           if ( c != '\n' ) {  // read FASTA/Q comment
             this->getuntil( KStream::SEP_LINE, rec.comment, nullptr );
           }
-          while ( this->getc( c ) && c != '>' && c != '@' && c != '+' ) {
+          while ( ( c = this->getc( ) ) && c != '>' && c != '@' && c != '+' ) {
             if ( c == '\n' ) continue;  // skip empty lines
             rec.seq += c;
             this->getuntil( KStream::SEP_LINE, rec.seq, nullptr, true ); // read the rest of the line
@@ -152,7 +196,7 @@ namespace klibpp {
           this->last = true;
           if ( c == '>' || c == '@' ) this->is_ready = true;  // the first header char has been read
           if ( c != '+' ) return *this;  // FASTA
-          while ( this->getc( c ) && c != '\n' );  // skip the rest of '+' line
+          while ( ( c = this->getc( ) ) && c != '\n' );  // skip the rest of '+' line
           if ( this->eof() ) {  // error: no quality string
             this->is_tqs = true;
             return *this;
@@ -218,25 +262,22 @@ namespace klibpp {
           return ret;
         }
         /* Low-level methods */
-          inline bool
-        getc( int& c ) noexcept  // ks_getc
+          inline char_type
+        getc( ) noexcept  // ks_getc
         {
-          // ready
-          if ( this->begin < this->end ) {
-            c = this->_nextc();
-            return true;
-          }
           // error
-          if ( this->err() || this->eof() ) return false;
+          if ( this->err() || this->eof() ) return 0;
           // fetch
-          this->begin = 0;
-          this->end = this->func( this->f, this->buf, TBufSize );
-          if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
-            this->is_eof = true;
-            return false;
+          if ( this->begin >= this->end ) {
+            this->begin = 0;
+            this->end = this->func( this->f, this->buf, this->bufsize );
+            if ( this->end <= 0 ) {  // err if end == -1 and eof if 0
+              this->is_eof = true;
+              return 0;
+            }
           }
-          c = this->_nextc();
-          return true;
+          // ready
+          return this->buf[ this->begin++ ];
         }
 
           inline bool
@@ -266,16 +307,16 @@ namespace klibpp {
         }
 
           inline bool
-        getuntil( int delimiter, std::string& str, int *dret, bool append=false )  // ks_getuntil
+        getuntil( char_type delimiter, std::string& str, char_type *dret, bool append=false )  // ks_getuntil
           noexcept
         {
-          int c;
+          char_type c;
           bool gotany = false;
           if ( dret ) *dret = 0;
           if ( !append ) str.clear();
-          int i = -1;
+          size_type i = -1;
           do {
-            if ( !this->getc( c ) ) break;
+            if ( !( c = this->getc( ) ) ) break;
             --this->begin;
             if ( delimiter == KStream::SEP_LINE ) {
               for ( i = this->begin; i < this->end; ++i ) {
@@ -303,8 +344,7 @@ namespace klibpp {
             }
 
             gotany = true;
-            str.resize( str.size() + i - this->begin );
-            std::copy( this->buf + this->begin, this->buf + i, str.end() - i + this->begin );
+            str.append( this->buf + this->begin, i - this->begin );
             this->begin = i + 1;
           } while ( i >= this->end );
 
@@ -317,13 +357,6 @@ namespace klibpp {
           }
           return true;
         }
-      private:
-        /* Methods */
-          inline int
-        _nextc( ) noexcept
-        {
-          return static_cast< int >( this->buf[ this->begin++ ] );
-        }
     };
 
   template< typename TFile, typename TFunc, typename... Args >
@@ -331,15 +364,6 @@ namespace klibpp {
     make_kstream( TFile&& file, TFunc&& func, Args&&... args )
     {
       return KStream< std::decay_t< TFile >, std::decay_t< TFunc > >(
-          std::forward< TFile >( file ), std::forward< TFunc >( func ),
-          std::forward< Args >( args )... );
-    }
-
-  template< int TBufSize, typename TFile, typename TFunc, typename... Args >
-      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >
-    make_kstream( TFile&& file, TFunc&& func, Args&&... args )
-    {
-      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TBufSize >(
           std::forward< TFile >( file ), std::forward< TFunc >( func ),
           std::forward< Args >( args )... );
     }

@@ -159,7 +159,7 @@ main( int argc, char* argv[] )
     fp = gzopen( argv[1], "r" );
     auto iks = make_kstream( fp, gzread, mode::in );
     t = clock();
-    records = iks.read_all( );
+    records = iks.read( );
     auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
     std::cerr << "[kseq++/read_all] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );

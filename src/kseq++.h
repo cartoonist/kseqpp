@@ -498,7 +498,7 @@ namespace klibpp {
         }
 
           inline std::vector< KSeq >
-        read_all( )
+        read( )
         {
           std::vector< KSeq > ret;
           while ( ( ret.emplace_back(), true ) && *this >> ret.back() );

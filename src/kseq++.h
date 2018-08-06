@@ -577,12 +577,36 @@ namespace klibpp {
         }
     };
 
+  template< typename TFile, typename TFunc >
+    using KStreamIn = KStream< TFile, TFunc, mode::In_ >;
+
+  template< typename TFile, typename TFunc >
+    using KStreamOut = KStream< TFile, TFunc, mode::Out_ >;
+
   template< typename TFile, typename TFunc, typename TSpec, typename... Args >
       inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >
     make_kstream( TFile&& file, TFunc&& func, TSpec, Args&&... args )
     {
       return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, TSpec >(
           std::forward< TFile >( file ), std::forward< TFunc >( func ), TSpec(),
+          std::forward< Args >( args )... );
+    }
+
+  template< typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::In_ >
+    make_ikstream( TFile&& file, TFunc&& func, Args&&... args )
+    {
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::In_ >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), mode::in,
+          std::forward< Args >( args )... );
+    }
+
+  template< typename TFile, typename TFunc, typename... Args >
+      inline KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::Out_ >
+    make_okstream( TFile&& file, TFunc&& func, Args&&... args )
+    {
+      return KStream< std::decay_t< TFile >, std::decay_t< TFunc >, mode::Out_ >(
+          std::forward< TFile >( file ), std::forward< TFunc >( func ), mode::out,
           std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */

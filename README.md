@@ -1,15 +1,17 @@
 kseq++
 ======
-kseq++ is a C++ re-implementation of [kseq](https://github.com/attractivechaos/klib/blob/master/kseq.h)
+kseq++ is a C++11 re-implementation of [kseq](https://github.com/attractivechaos/klib/blob/master/kseq.h)
 by [Heng Li](https://github.com/lh3). The goal for re-implementation of `kseq` is
-providing better API and resource management while preserving the flexibility,
+providing better API and resource management while preserving its flexibility
 and performance. Like original kseq, this parser is based on generic stream
 buffer and works with different file types. However, instead of using C macros,
-it uses C++ templates. The RAII-class `KStream` is the main class which is
-constructed by `make_kstream` function. It gets the file object (can be of any
-type) and its corresponding read/write function. In contrast with kseq, there is
-no need to specify the types, since they are inferred by compiler. Each record
-will be stored in a `KSeq` object.
+it uses C++ templates. The RAII-style class `KStream` is the main class which
+can be constructed by `make_kstream` function series or by calling its
+constructor directly (C++17). It gets the file object/pointer (can be of any
+type), its corresponding read/write function, and opening mode (`mode::in` or
+`mode::out`).  In contrast with kseq, there is no need to specify the types,
+since they are inferred by compiler. Each record will be stored in a `KSeq`
+object.
 
 It inherits all features from kseq (quoting from kseq homepage):
 > - Parse both FASTA and FASTQ format, and even a mixture of FASTA and FASTQ records in one file.
@@ -17,23 +19,34 @@ It inherits all features from kseq (quoting from kseq homepage):
 > - Support multi-line FASTQ.
 > - Work on a stream with an internal stream buffer.
 
+while additionally provides:
+- simpler and more readable API
+- RAII-style memory management
+
 The library also comes with FASTA/Q writer. Like reading, it can write mixed
-multi-line FASTA and FASTQ records with gzip compression.
+multi-line FASTA and FASTQ records with gzip compression. The writer is
+multi-threaded and the actual write function call happens in another thread in
+order to hide the IO latency.
 
 Reading a sequence file
 -----------------------
-This example reads FASTQ/A records from either compressed or uncompressed file:
+This example reads FASTQ/A records one by one from either compressed or
+uncompressed file:
 
 ```c++
 #include <iostream>
 #include <zlib>
 #include "kseq++.h"
 
+using namespace klibpp;
+
 int main(int argc, char* argv[])
 {
   KSeq record;
   gzFile fp = gzopen(filename, "r");
-  auto ks = make_kstream(fp, gzread);
+  auto ks = make_kstream(fp, gzread, mode::in);
+  // auto ks = KStream(fp, gzread, mode::in);  // C++17
+  // auto ks = KStreamIn(fp, gzread);  // C++17
   while (ks >> record) {
     std::cout << record.name << std::endl;
     if (!record.comment.empty()) std::cout << record.comment << std::endl;
@@ -44,30 +57,61 @@ int main(int argc, char* argv[])
 }
 ```
 
-Writing a sequence file
------------------------
-While writing a record to a file, sequence and quality scores can be wrapped at
-a certain length. The default wrapping length is 60 bps and can be customised by
-`KStream::set_wraplen` method. This example writes FASTA/Q records to an
-uncompressed file:
+Or records can be fetched and stored in a `std::vector< KSeq >` in chunks:
 
 ```c++
 #include <iostream>
 #include <zlib>
 #include "kseq++.h"
 
+using namespace klibpp;
+
+int main(int argc, char* argv[])
+{
+  KSeq record;
+  gzFile fp = gzopen(filename, "r");
+  auto ks = make_ikstream(fp, gzread);
+  auto records = ks.read( );  // fetch all the records
+  // auto records = ks.read( 100 );  // read a chunk of 100 records
+  gzclose(fp);
+}
+```
+
+Writing a sequence file
+-----------------------
+This example writes FASTA/Q records to an uncompressed file:
+
+```c++
+#include <iostream>
+#include <zlib>
+#include "kseq++.h"
+
+using namespace klibpp;
+
 int main(int argc, char* argv[])
 {
   int fd = open(filename, O_WRONLY);
-  auto ks = make_kstream(fd, write);
-  std::vector<KSeq> records;
+  auto ks = make_kstream(fd, write, mode::out);
+  // auto ks = KStreamOut(fd, write);  // C++ 17
   // ...
-  // fill `records` with FASTA/Q records
-  // ...
-  for (const auto& r : records) ks << r;
+  for (KSeq const& r : records) ks << r;
+  ks << kend;
   close(fd);
 }
 ```
+
+While writing a record to a file, sequence and quality scores can be wrapped at
+a certain length. The default wrapping length is 60 bps and can be customised by
+`KStream::set_wraplen` method.
+
+---
+**NOTE**
+
+The buffer will be flushed to the file when the `KStream` object goes out of the
+scope. Otherwise, `ks << kend` is required to be called before closing the file
+to make sure that there is no data loss.
+
+---
 
 Benchmark
 ---------
@@ -83,18 +127,30 @@ For this benchmark, I re-used sequence files from SeqKit benchmark:
 
 ### Platform
 
-- CPU: Intel&reg; Core&reg; i5-4200U CPU @ 1.60GHz, two cores, 4 threads
-- RAM: DDR3 1600 MHz, 8192 MB
-- SSD: Samsung SSD 850 EVO 500GB, SATA-3
-- OS: Debian GNU/Linux 9.4 (stretch), Linux 4.9.0-6-amd64
+- CPU: Intel&reg; Xeon&reg; CPU E3-1241 v3 @ 3.50GHz, 4 cores, 8 threads
+- RAM: DDR3 1600 MHz, 16352 MB
+- HDD: Seagate Desktop HDD 500GB, 16MB Cache, SATA-3
+- OS: Debian GNU/Linux 9.4 (stretch), Linux 4.9.91-1-amd64-smp
 - Compiler: GCC 6.3.0, compiled with optimisation level 3 (`-O3`)
 
 ### Result
 
-#### Reading
+#### Reading all records
 
-| file         | kseq++ |   kseq |  SeqAn |
-| :----------- | -----: | -----: | -----: |
-| dataset_A.fa | 7.45 s | 6.22 s | 9.96 s |
-| dataset_B.fa | 6.78 s | 5.71 s | 19.9 s |
-| dataset_C.fq | 5.73 s | 4.21 s | 8.66 s |
+| file         |     kseq++ |   kseq |  SeqAn | kseq++/read\* | SeqAn/readRecords\*\* |
+| :----------- | ---------: | -----: | -----: | ------------: | --------------------: |
+| dataset_A.fa | **2.35 s** |  2.5 s | 2.92 s |    **3.52 s** |                4.94 s |
+| dataset_B.fa | **2.66 s** |  2.8 s | 3.34 s |    **3.74 s** |                9.82 s |
+| dataset_C.fq | **2.56 s** | 2.46 s | 2.66 s |    **4.56 s** |                11.8 s |
+
+\* storing all records in `std::vector`.
+
+\*\* storing all records in `seqan::StringSet< seqan::CharString >`.
+
+#### Writing all records
+
+| file         | kseq++/plain | kseq++/gzipped |  SeqAn/plain |
+| :----------- | -----------: | -------------: | -----------: |
+| dataset_A.fa |   **2.71 s** |      **866 s** |       1.38 s |
+| dataset_B.fa |   **2.87 s** |      **849 s** |       1.44 s |
+| dataset_C.fq |   **2.17 s** |      **365 s** |       1.65 s |

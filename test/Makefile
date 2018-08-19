@@ -32,7 +32,7 @@ LDFLAG       := -lz \
 SOURCES      := $(wildcard *.cc)
 
 ##  Targets:
-TARGETS       := ${BINDIR}/kseq++_test ${BINDIR}/kseq++_bench
+TARGETS       := ${BINDIR}/kseq++_test ${BINDIR}/kseq++_bench ${BINDIR}/seqio_test
 
 ##  Recipes:
 COMPILE.cxx   = ${CXX} -c ${CXXFLAGS} ${CPPFLAGS} -o $@
@@ -49,6 +49,9 @@ ${BINDIR}/kseq++_test: kseq++_test.o
 	${LINK}
 
 ${BINDIR}/kseq++_bench: kseq++_bench.o
+	${LINK}
+
+${BINDIR}/seqio_test: seqio_test.o
 	${LINK}
 
 # general rule for compiling cc files.

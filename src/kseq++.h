@@ -80,6 +80,7 @@ namespace klibpp {
         using spec_type = mode::Out_;
         using size_type = base_type::size_type;
         using char_type = base_type::char_type;
+        using close_type = int(*)( TFile );
       protected:
         /* Consts */
         constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 131072;
@@ -99,14 +100,17 @@ namespace klibpp {
         unsigned int wraplen;                           /**< @brief line wrap length */
         TFile f;                                        /**< @brief file handler */
         TFunc func;                                     /**< @brief write function */
+        close_type close;                               /**< @brief close function */
       public:
         KStream( TFile f_,
             TFunc func_,
             spec_type=mode::out,
-            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE,
+            close_type cfunc_=nullptr )
           : m_buf( new char_type[ bs_ ] ), w_buf( new char_type[ bs_ ] ),
           bufsize( bs_ ), bufslock( new std::mutex ), cv( new std::condition_variable ),
-          wraplen( DEFAULT_WRAPLEN ), f( std::move( f_ ) ), func( std::move(  func_  ) )
+          wraplen( DEFAULT_WRAPLEN ), f( std::move( f_ ) ), func( std::move(  func_  ) ),
+          close( cfunc_ )
         {
           this->m_begin = 0;
           this->m_end = 0;
@@ -118,8 +122,22 @@ namespace klibpp {
 
         KStream( TFile f_,
             TFunc func_,
-            std::make_unsigned_t< size_type > bs_ )
-          : KStream( std::move( f_ ), std::move( func_ ), mode::out, bs_ )
+            std::make_unsigned_t< size_type > bs_,
+            close_type cfunc_=nullptr )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, bs_, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_BUFSIZE, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_BUFSIZE, cfunc_ )
         { }
 
         KStream( KStream const& ) = delete;
@@ -176,6 +194,7 @@ namespace klibpp {
           this->worker_join();
           delete[] this->m_buf;
           delete[] this->w_buf;
+          if ( this->close != nullptr ) this->close( this->f );
         }
         /* Mutators */
           inline void
@@ -331,6 +350,7 @@ namespace klibpp {
         using spec_type = mode::In_;
         using size_type = base_type::size_type;
         using char_type = base_type::char_type;
+        using close_type = int(*)( TFile );
       protected:
         /* Separators */
         constexpr static char_type SEP_SPACE = 0;  // isspace(): \t, \n, \v, \f, \r
@@ -350,13 +370,15 @@ namespace klibpp {
         bool last;                           /**< @brief last read was successful */
         TFile f;                             /**< @brief file handler */
         TFunc func;                          /**< @brief read function */
+        close_type close;                    /**< @brief close function */
       public:
         KStream( TFile f_,
             TFunc func_,
             spec_type=mode::in,
-            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE )  // ks_init
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE,
+            close_type cfunc_=nullptr )  // ks_init
           : buf( new char_type[ bs_ ] ), bufsize( bs_ ),
-          f( std::move( f_ ) ), func( std::move(  func_  ) )
+          f( std::move( f_ ) ), func( std::move(  func_  ) ), close( cfunc_ )
         {
           this->begin = 0;
           this->end = 0;
@@ -368,8 +390,22 @@ namespace klibpp {
 
         KStream( TFile f_,
             TFunc func_,
-            std::make_unsigned_t< size_type > bs_ )
-          : KStream( std::move( f_ ), std::move( func_ ), mode::in, bs_ )
+            std::make_unsigned_t< size_type > bs_,
+            close_type cfunc_=nullptr )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::in, bs_, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::in, DEFAULT_BUFSIZE, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::in, DEFAULT_BUFSIZE, cfunc_ )
         { }
 
         KStream( KStream const& ) = delete;
@@ -411,6 +447,7 @@ namespace klibpp {
         ~KStream( ) noexcept
         {
           delete[] this->buf;
+          if ( this->close != nullptr ) this->close( this->f );
         }
         /* Methods */
           inline bool

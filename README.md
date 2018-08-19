@@ -28,10 +28,42 @@ multi-line FASTA and FASTQ records with gzip compression. The writer is
 multi-threaded and the actual write function call happens in another thread in
 order to hide the IO latency.
 
+Higher-level API
+----------------
+Apart from `KStream` class, this library provides another level of abstraction
+which hides most details and provides very simple API on top of `KStream` for
+working with sequence files: `SeqStreamIn` and `SeqStreamOut` for reading
+and writing a sequence file respectively.  In order to prevent imposing any
+unwanted external libraries (e.g. `zlib`) , the `SeqStream` class set are
+defined in a separated header file (`seqio.h`) from the core library.
+
 Reading a sequence file
 -----------------------
-This example reads FASTQ/A records one by one from either compressed or
-uncompressed file:
+These examples read FASTQ/A records one by one from either compressed or
+uncompressed file.
+
+Using `SeqStreamIn`:
+
+```c++
+#include <iostream>
+#include "seqio.h"
+
+using namespace klibpp;
+
+int main(int argc, char* argv[])
+{
+  KSeq record;
+  SeqStreamIn iss("file.dat");
+  while (iss >> record) {
+    std::cout << record.name << std::endl;
+    if (!record.comment.empty()) std::cout << record.comment << std::endl;
+    std::cout << record.seq << std::endl;
+    if (!record.qual.empty()) std::cout << record.qual << std::endl;
+  }
+}
+```
+
+Using `KStream`:
 
 ```c++
 #include <iostream>
@@ -57,7 +89,25 @@ int main(int argc, char* argv[])
 }
 ```
 
-Or records can be fetched and stored in a `std::vector< KSeq >` in chunks:
+Or records can be fetched and stored in a `std::vector< KSeq >` in chunks.
+
+Using `SeqStreamIn`:
+
+```c++
+#include <iostream>
+#include "seqio.h"
+
+using namespace klibpp;
+
+int main(int argc, char* argv[])
+{
+  SeqStreamIn iss("file.dat");
+  auto records = iss.read();
+  // auto records = iss.read(100);  // read a chunk of 100 records
+}
+```
+
+Using `KStream`:
 
 ```c++
 #include <iostream>
@@ -68,18 +118,34 @@ using namespace klibpp;
 
 int main(int argc, char* argv[])
 {
-  KSeq record;
   gzFile fp = gzopen(filename, "r");
   auto ks = make_ikstream(fp, gzread);
-  auto records = ks.read( );  // fetch all the records
-  // auto records = ks.read( 100 );  // read a chunk of 100 records
+  auto records = ks.read();  // fetch all the records
+  // auto records = ks.read(100);  // read a chunk of 100 records
   gzclose(fp);
 }
 ```
 
 Writing a sequence file
 -----------------------
-This example writes FASTA/Q records to an uncompressed file:
+These examples write FASTA/Q records to an uncompressed file.
+
+Using `SeqStreamIn`:
+
+```c++
+#include <iostream>
+#include "seqio.h"
+
+using namespace klibpp;
+
+int main(int argc, char* argv[])
+{
+  SeqStreamOut oss("file.dat");
+  for (KSeq const& r : records) oss << r;
+}
+```
+
+Using `KStream`:
 
 ```c++
 #include <iostream>
@@ -110,6 +176,8 @@ a certain length. The default wrapping length is 60 bps and can be customised by
 The buffer will be flushed to the file when the `KStream` object goes out of the
 scope. Otherwise, `ks << kend` is required to be called before closing the file
 to make sure that there is no data loss.
+
+There is no need to write `kend` to the stream if using `SeqStreamOut`.
 
 ---
 

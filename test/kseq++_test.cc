@@ -151,6 +151,7 @@ main( int argc, char* argv[] )
     print_trunc( "  seq:  ", record.seq );
     if ( ! record.qual.empty() ) print_trunc( "  qual: ", record.seq );
   }
+  assert( count == iks.counts() );
   if ( count > MAX_SHOWN_REC ) {
     std::cout << "... and " << count - MAX_SHOWN_REC << " other records." << '\n';
   }

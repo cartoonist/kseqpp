@@ -219,6 +219,6 @@ For this benchmark, I re-used sequence files from SeqKit benchmark:
 
 | file         | kseq++/plain | kseq++/gzipped |  SeqAn/plain |
 | :----------- | -----------: | -------------: | -----------: |
-| dataset_A.fa |   **2.71 s** |      **866 s** |       1.38 s |
-| dataset_B.fa |   **2.87 s** |      **849 s** |       1.44 s |
-| dataset_C.fq |   **2.17 s** |      **365 s** |       1.65 s |
+| dataset_A.fa |    **2.3 s** |      **866 s** |       2.29 s |
+| dataset_B.fa |   **2.19 s** |      **849 s** |       2.33 s |
+| dataset_C.fq |   **1.94 s** |      **365 s** |       2.24 s |

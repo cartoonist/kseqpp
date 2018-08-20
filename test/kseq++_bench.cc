@@ -154,6 +154,43 @@ main( int argc, char* argv[] )
     std::cerr << "[kseq++] " << std::setprecision(3) << d << " sec" << std::endl;
     close( fd );
   }
+  {
+    std::ifstream ifs( argv[1], std::ifstream::in );
+    KSeq record;
+    char buf[1000];
+    unsigned long int count = 0;
+    t = clock();
+    while ( ifs.peek() != EOF ) {
+      while ( std::isspace( ifs.peek() ) ) ifs.get();
+      char c = ifs.get( );
+      if ( c != '>' && c != '@' ) break;
+      ifs >> record.name;
+      if ( ifs.peek() == ' ' ) ifs >> record.comment;
+      while ( ifs.peek() != EOF && ifs.peek() != '>' && ifs.peek() != '@' && ifs.peek() != '+' ) {
+        if ( std::isspace( ifs.peek() ) ) {
+          ifs.get();
+          continue;
+        }
+        ifs.getline( buf, 1000 );
+        record.seq += buf;
+      }
+      while ( std::isspace( ifs.peek() ) ) ifs.get();
+      if ( ifs.peek() == '+' ) ifs.get();
+      while ( ifs.peek() != EOF && ifs.peek() != '>' && ifs.peek() != '@' ) {
+        if ( std::isspace( ifs.peek() ) ) {
+          ifs.get();
+          continue;
+        }
+        ifs.getline( buf, 1000 );
+        record.qual += buf;
+      }
+      assert( record.qual.size() == record.seq.size() );
+      ++count;
+      record.clear();
+    }
+    auto d = static_cast< float >( clock() - t ) / CLOCKS_PER_SEC;
+    std::cerr << "[ifstream] " << std::setprecision(3) << d << " sec" << std::endl;
+  }
   std::vector< KSeq > records;
   {
     fp = gzopen( argv[1], "r" );
@@ -179,7 +216,7 @@ main( int argc, char* argv[] )
   std::cerr << "=== WRITE TESTS ===" << std::endl;
   {
     seqan::SeqFileOut o_file;
-    open( o_file, argv[1], seqan::FileOpenMode::OPEN_WRONLY );
+    open( o_file, argv[2], seqan::FileOpenMode::OPEN_WRONLY );
     t = clock();
     writeRecords( o_file, names, seqs, quals );
     close( o_file );

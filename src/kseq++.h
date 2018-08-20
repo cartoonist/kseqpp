@@ -32,7 +32,7 @@
 // versioning
 #define KLIBPP_MAJOR 0
 #define KLIBPP_MINOR 1
-#define KLIBPP_REVISION 1
+#define KLIBPP_REVISION 2
 
 namespace klibpp {
   template< typename TFile,
@@ -98,6 +98,7 @@ namespace klibpp {
         size_type m_end;                                /**< @brief end buffer index or error flag if -1 */
         size_type w_end;                                /**< @brief end second buffer index or error flag if -1 */
         unsigned int wraplen;                           /**< @brief line wrap length */
+        unsigned long int counter;                      /**< @brief number of records written so far */
         TFile f;                                        /**< @brief file handler */
         TFunc func;                                     /**< @brief write function */
         close_type close;                               /**< @brief close function */
@@ -117,6 +118,7 @@ namespace klibpp {
           this->terminate = false;
           this->produced = false;
           this->w_end = 0;
+          this->counter = 0;
           this->worker_start();
         }
 
@@ -159,8 +161,10 @@ namespace klibpp {
           this->m_end = other.m_end;
           this->w_end = other.w_end;
           this->wraplen = other.wraplen;
+          this->counter = other.counter;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           this->worker_start();
         }
 
@@ -183,8 +187,10 @@ namespace klibpp {
           this->m_end = other.m_end;
           this->w_end = other.w_end;
           this->wraplen = other.wraplen;
+          this->counter = other.counter;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           this->worker_start();
           return *this;
         }
@@ -195,6 +201,12 @@ namespace klibpp {
           delete[] this->m_buf;
           delete[] this->w_buf;
           if ( this->close != nullptr ) this->close( this->f );
+        }
+        /* Accessors */
+          inline unsigned long int
+        counts( ) const
+        {
+          return this->counter;
         }
         /* Mutators */
           inline void
@@ -228,6 +240,7 @@ namespace klibpp {
             this->puts( rec.qual, true );
           }
           this->puts( '\n' );
+          if ( *this ) this->counter++;
           return *this;
         }
 
@@ -368,6 +381,7 @@ namespace klibpp {
         bool is_tqs;                         /**< @brief truncated quality string flag */
         bool is_ready;                       /**< @brief next record ready flag */
         bool last;                           /**< @brief last read was successful */
+        unsigned long int counter;           /**< @brief number of parsed records so far */
         TFile f;                             /**< @brief file handler */
         TFunc func;                          /**< @brief read function */
         close_type close;                    /**< @brief close function */
@@ -386,6 +400,7 @@ namespace klibpp {
           this->is_tqs = false;
           this->is_ready = false;
           this->last = false;
+          this->counter = 0;
         }
 
         KStream( TFile f_,
@@ -422,8 +437,10 @@ namespace klibpp {
           this->is_tqs = other.is_tqs;
           this->is_ready = other.is_ready;
           this->last = other.last;
+          this->counter = other.counter;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
         }
 
         KStream& operator=( KStream&& other ) noexcept
@@ -439,8 +456,10 @@ namespace klibpp {
           this->is_tqs = other.is_tqs;
           this->is_ready = other.is_ready;
           this->last = other.last;
+          this->counter = other.counter;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           return *this;
         }
 
@@ -448,6 +467,12 @@ namespace klibpp {
         {
           delete[] this->buf;
           if ( this->close != nullptr ) this->close( this->f );
+        }
+        /* Accessors */
+          inline unsigned long int
+        counts( ) const
+        {
+          return this->counter;
         }
         /* Methods */
           inline bool
@@ -495,6 +520,7 @@ namespace klibpp {
             this->getuntil( KStream::SEP_LINE, rec.seq, nullptr, true ); // read the rest of the line
           }
           this->last = true;
+          ++this->counter;
           if ( c == '>' || c == '@' ) this->is_ready = true;  // the first header char has been read
           if ( c != '+' ) return *this;  // FASTA
           while ( ( c = this->getc( ) ) && c != '\n' );  // skip the rest of '+' line

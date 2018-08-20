@@ -179,7 +179,7 @@ main( int argc, char* argv[] )
   std::cerr << "=== WRITE TESTS ===" << std::endl;
   {
     seqan::SeqFileOut o_file;
-    open( o_file, argv[1], seqan::FileOpenMode::OPEN_WRONLY );
+    open( o_file, argv[2], seqan::FileOpenMode::OPEN_WRONLY );
     t = clock();
     writeRecords( o_file, names, seqs, quals );
     close( o_file );

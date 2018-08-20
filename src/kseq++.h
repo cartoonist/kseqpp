@@ -161,6 +161,7 @@ namespace klibpp {
           this->wraplen = other.wraplen;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           this->worker_start();
         }
 
@@ -185,6 +186,7 @@ namespace klibpp {
           this->wraplen = other.wraplen;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           this->worker_start();
           return *this;
         }
@@ -424,6 +426,7 @@ namespace klibpp {
           this->last = other.last;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
         }
 
         KStream& operator=( KStream&& other ) noexcept
@@ -441,6 +444,7 @@ namespace klibpp {
           this->last = other.last;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
+          this->close = other.close;
           return *this;
         }
 

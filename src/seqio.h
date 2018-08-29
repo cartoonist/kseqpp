@@ -33,6 +33,10 @@ namespace klibpp {
       SeqStreamIn( const char* filename )
         : base_type( gzopen( filename, "r" ), gzread, gzclose )
       { }
+
+      SeqStreamIn( int fd )
+        : base_type( gzdopen( fd, "r" ), gzread, gzclose )
+      { }
   };
 
   class SeqStreamOut
@@ -43,6 +47,10 @@ namespace klibpp {
       /* Lifecycle */
       SeqStreamOut( const char* filename, bool compressed=false )
         : base_type( gzopen( filename, ( compressed ? "w" : "wT" ) ), gzwrite, gzclose )
+      { }
+
+      SeqStreamOut( int fd, bool compressed=false )
+        : base_type( gzdopen( fd, ( compressed ? "w" : "wT" ) ), gzwrite, gzclose )
       { }
   };
 }  /* -----  end of namespace klibpp  ----- */

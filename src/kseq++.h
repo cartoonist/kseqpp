@@ -69,7 +69,7 @@ namespace klibpp {
   }  /* -----  end of namespace mode  ----- */
 
   namespace format {
-    enum Format { mixture, fasta, fastq };
+    enum Format { mix, fasta, fastq };
   }
 
   struct KEnd_ {};
@@ -89,7 +89,7 @@ namespace klibpp {
         /* Consts */
         constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 131072;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
-        constexpr static format::Format DEFAULT_FORMAT = format::mixture;
+        constexpr static format::Format DEFAULT_FORMAT = format::mix;
         /* Data members */
         char_type* m_buf;                               /**< @brief character buffer */
         char_type* w_buf;                               /**< @brief second character buffer */
@@ -276,7 +276,7 @@ namespace klibpp {
           inline KStream&
         operator<<( const KSeq& rec )
         {
-          if ( ( this->fmt == format::mixture && rec.qual.empty() ) ||  // FASTA record
+          if ( ( this->fmt == format::mix && rec.qual.empty() ) ||  // FASTA record
                ( this->fmt == format::fasta ) ) this->puts( '>' );      // Forced FASTA
           else {
             if ( rec.qual.size() != rec.seq.size() ) {
@@ -292,7 +292,7 @@ namespace klibpp {
           }
           this->puts( '\n' );
           this->puts( rec.seq, true );
-          if ( ( this->fmt == format::mixture && !rec.qual.empty() ) ||  // FASTQ record
+          if ( ( this->fmt == format::mix && !rec.qual.empty() ) ||  // FASTQ record
                ( this->fmt == format::fastq ) ) {                        // Forced FASTQ
             this->puts( '\n' );
             this->puts( '+' );

@@ -276,9 +276,15 @@ namespace klibpp {
           inline KStream&
         operator<<( const KSeq& rec )
         {
-          else this->puts( '@' );  // FASTQ record
           if ( ( this->fmt == format::mixture && rec.qual.empty() ) ||  // FASTA record
                ( this->fmt == format::fasta ) ) this->puts( '>' );      // Forced FASTA
+          else {
+            if ( rec.qual.size() != rec.seq.size() ) {
+              throw std::runtime_error( "the sequence length doesn't match with"
+                                        " the length of its quality string.");
+            }
+            this->puts( '@' );  // FASTQ record
+          }
           this->puts( rec.name );
           if ( !rec.comment.empty() ) {
             this->puts( ' ' );

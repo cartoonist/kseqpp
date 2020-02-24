@@ -1,5 +1,5 @@
 /**
- *    @file  kseq++.h
+ *    @file  kseq++.hpp
  *   @brief  C++ implementation of kseq library.
  *
  *  This is a header-only library re-implementing the original kseq library.
@@ -15,8 +15,8 @@
  *  See LICENSE file for more information.
  */
 
-#ifndef  KSEQPP_H__
-#define  KSEQPP_H__
+#ifndef  KSEQPP_KSEQPP_HPP__
+#define  KSEQPP_KSEQPP_HPP__
 
 #include <cassert>
 #include <cctype>
@@ -29,10 +29,7 @@
 #include <mutex>
 #include <condition_variable>
 
-// versioning
-#define KLIBPP_MAJOR 0
-#define KLIBPP_MINOR 1
-#define KLIBPP_REVISION 4
+#include "config.hpp"
 
 namespace klibpp {
   template< typename TFile,
@@ -740,4 +737,4 @@ namespace klibpp {
           std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */
-#endif  /* ----- #ifndef KSEQPP_H__  ----- */
+#endif  /* ----- #ifndef KSEQPP_KSEQPP_HPP__  ----- */

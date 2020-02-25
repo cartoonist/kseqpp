@@ -1,5 +1,5 @@
 /**
- *    @file  seqio.h
+ *    @file  seqio.hpp
  *   @brief  SeqStream class definition
  *
  *  The `SeqStream` class introduces one level of abstraction to the KStream to hide
@@ -16,12 +16,12 @@
  *  See LICENSE file for more information.
  */
 
-#ifndef  SEQIO_H__
-#define  SEQIO_H__
+#ifndef  KSEQPP_SEQIO_HPP__
+#define  KSEQPP_SEQIO_HPP__
 
 #include <zlib.h>
 
-#include "kseq++.h"
+#include "kseq++.hpp"
 
 namespace klibpp {
   class SeqStreamIn
@@ -54,4 +54,4 @@ namespace klibpp {
       { }
   };
 }  /* -----  end of namespace klibpp  ----- */
-#endif  /* ----- #ifndef SEQIO_H__  ----- */
+#endif  /* ----- #ifndef KSEQPP_SEQIO_HPP__  ----- */

@@ -21,7 +21,7 @@
 #include <string>
 #include <fcntl.h>
 
-#include "kseq++.h"
+#include <kseq++/kseq++.hpp>
 #include "kseq.h"
 
 #define SEQ_TRUNC_LEN 20

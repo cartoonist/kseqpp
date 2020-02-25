@@ -1,5 +1,5 @@
 /**
- *    @file  kseq++.h
+ *    @file  kseq++.hpp
  *   @brief  C++ implementation of kseq library.
  *
  *  This is a header-only library re-implementing the original kseq library.
@@ -15,8 +15,8 @@
  *  See LICENSE file for more information.
  */
 
-#ifndef  KSEQPP_H__
-#define  KSEQPP_H__
+#ifndef  KSEQPP_KSEQPP_HPP__
+#define  KSEQPP_KSEQPP_HPP__
 
 #include <cassert>
 #include <cctype>
@@ -29,10 +29,7 @@
 #include <mutex>
 #include <condition_variable>
 
-// versioning
-#define KLIBPP_MAJOR 0
-#define KLIBPP_MINOR 1
-#define KLIBPP_REVISION 4
+#include "config.hpp"
 
 namespace klibpp {
   template< typename TFile,
@@ -68,6 +65,10 @@ namespace klibpp {
     constexpr Out_ out;
   }  /* -----  end of namespace mode  ----- */
 
+  namespace format {
+    enum Format { mix, fasta, fastq };
+  }
+
   struct KEnd_ {};
   constexpr KEnd_ kend;
 
@@ -85,6 +86,7 @@ namespace klibpp {
         /* Consts */
         constexpr static std::make_unsigned_t< size_type > DEFAULT_BUFSIZE = 131072;
         constexpr static unsigned int DEFAULT_WRAPLEN = 60;
+        constexpr static format::Format DEFAULT_FORMAT = format::mix;
         /* Data members */
         char_type* m_buf;                               /**< @brief character buffer */
         char_type* w_buf;                               /**< @brief second character buffer */
@@ -99,6 +101,7 @@ namespace klibpp {
         size_type w_end;                                /**< @brief end second buffer index or error flag if -1 */
         unsigned int wraplen;                           /**< @brief line wrap length */
         unsigned long int counter;                      /**< @brief number of records written so far */
+        format::Format fmt;                             /**< @brief format of the output records */
         TFile f;                                        /**< @brief file handler */
         TFunc func;                                     /**< @brief write function */
         close_type close;                               /**< @brief close function */
@@ -106,12 +109,13 @@ namespace klibpp {
         KStream( TFile f_,
             TFunc func_,
             spec_type=mode::out,
+            format::Format fmt_=DEFAULT_FORMAT,
             std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE,
             close_type cfunc_=nullptr )
           : m_buf( new char_type[ bs_ ] ), w_buf( new char_type[ bs_ ] ),
           bufsize( bs_ ), bufslock( new std::mutex ), cv( new std::condition_variable ),
-          wraplen( DEFAULT_WRAPLEN ), f( std::move( f_ ) ), func( std::move(  func_  ) ),
-          close( cfunc_ )
+          wraplen( DEFAULT_WRAPLEN ), fmt( fmt_ ), f( std::move( f_ ) ),
+          func( std::move(  func_  ) ), close( cfunc_ )
         {
           this->m_begin = 0;
           this->m_end = 0;
@@ -124,22 +128,53 @@ namespace klibpp {
 
         KStream( TFile f_,
             TFunc func_,
+            format::Format fmt_,
+            std::make_unsigned_t< size_type > bs_=DEFAULT_BUFSIZE,
+            close_type cfunc_=nullptr )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, fmt_, bs_, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type,
+            format::Format fmt_,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, fmt_, DEFAULT_BUFSIZE, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            format::Format fmt_,
+            close_type cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, fmt_, DEFAULT_BUFSIZE, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            spec_type,
             std::make_unsigned_t< size_type > bs_,
             close_type cfunc_=nullptr )
-          : KStream( std::move( f_ ), std::move( func_ ), mode::out, bs_, cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_FORMAT, bs_, cfunc_ )
+        { }
+
+        KStream( TFile f_,
+            TFunc func_,
+            std::make_unsigned_t< size_type > bs_,
+            close_type cfunc_=nullptr )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_FORMAT, bs_, cfunc_ )
         { }
 
         KStream( TFile f_,
             TFunc func_,
             spec_type,
             close_type cfunc_ )
-          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_BUFSIZE, cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_FORMAT, DEFAULT_BUFSIZE, cfunc_ )
         { }
 
         KStream( TFile f_,
             TFunc func_,
             close_type cfunc_ )
-          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_BUFSIZE, cfunc_ )
+          : KStream( std::move( f_ ), std::move( func_ ), mode::out, DEFAULT_FORMAT, DEFAULT_BUFSIZE, cfunc_ )
         { }
 
         KStream( KStream const& ) = delete;
@@ -162,6 +197,7 @@ namespace klibpp {
           this->w_end = other.w_end;
           this->wraplen = other.wraplen;
           this->counter = other.counter;
+          this->fmt = other.fmt;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
           this->close = other.close;
@@ -188,6 +224,7 @@ namespace klibpp {
           this->w_end = other.w_end;
           this->wraplen = other.wraplen;
           this->counter = other.counter;
+          this->fmt = other.fmt;
           this->f = std::move( other.f );
           this->func = std::move( other.func );
           this->close = other.close;
@@ -208,11 +245,23 @@ namespace klibpp {
         {
           return this->counter;
         }
+
+          inline format::Format
+        get_format( ) const
+        {
+          return this->fmt;
+        }
         /* Mutators */
           inline void
         set_wraplen( unsigned int len )
         {
           this->wraplen = len;
+        }
+
+          inline void
+        set_format( format::Format fmt_ )
+        {
+          this->fmt = fmt_;
         }
         /* Methods */
           inline bool
@@ -224,8 +273,15 @@ namespace klibpp {
           inline KStream&
         operator<<( const KSeq& rec )
         {
-          if ( rec.qual.empty() ) this->puts( '>' );  // FASTA record
-          else this->puts( '@' );  // FASTQ record
+          if ( ( this->fmt == format::mix && rec.qual.empty() ) ||  // FASTA record
+               ( this->fmt == format::fasta ) ) this->puts( '>' );      // Forced FASTA
+          else {
+            if ( rec.qual.size() != rec.seq.size() ) {
+              throw std::runtime_error( "the sequence length doesn't match with"
+                                        " the length of its quality string.");
+            }
+            this->puts( '@' );  // FASTQ record
+          }
           this->puts( rec.name );
           if ( !rec.comment.empty() ) {
             this->puts( ' ' );
@@ -233,7 +289,8 @@ namespace klibpp {
           }
           this->puts( '\n' );
           this->puts( rec.seq, true );
-          if ( !rec.qual.empty() ) {
+          if ( ( this->fmt == format::mix && !rec.qual.empty() ) ||  // FASTQ record
+               ( this->fmt == format::fastq ) ) {                        // Forced FASTQ
             this->puts( '\n' );
             this->puts( '+' );
             this->puts( '\n' );
@@ -241,6 +298,13 @@ namespace klibpp {
           }
           this->puts( '\n' );
           if ( *this ) this->counter++;
+          return *this;
+        }
+
+          inline KStream&
+        operator<<( format::Format fmt_ )
+        {
+          this->fmt = fmt_;
           return *this;
         }
 
@@ -673,4 +737,4 @@ namespace klibpp {
           std::forward< Args >( args )... );
     }
 }  /* -----  end of namespace klibpp  ----- */
-#endif  /* ----- #ifndef KSEQPP_H__  ----- */
+#endif  /* ----- #ifndef KSEQPP_KSEQPP_HPP__  ----- */

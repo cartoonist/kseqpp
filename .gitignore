@@ -1,9 +1,16 @@
+# Build directory
+build/
+
 # Binary directory
 bin/
 
 # Generated Makefiles
 src/.d/
 test/.d/
+
+# Generated files
+include/kseq++/config.hpp
+kseq++.pc
 
 # Log files
 *.log

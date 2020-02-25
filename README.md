@@ -181,6 +181,31 @@ There is no need to write `kend` to the stream if using `SeqStreamOut`.
 
 ---
 
+### Formatting
+
+The default behaviour is to write a record in FASTQ format if it has quality
+information. Otherwise, i.e. when the quality string is empty, the record will
+be written in FASTA format. So, the output might be a mixture of FASTQ and FASTA
+records. However, the output format can be forced by using `format::fasta` and
+`format::fastq` modifiers. For example:
+
+```c++
+out << format::fasta << fastq_record;
+out << another_record;  // all other calls after this will also be in FASTA format.
+```
+
+will write a FASTQ record in FASTA format. These modifiers affect all writes
+after them until another modifier is used. The `format::mix` modifier reverts
+the behaviour to default.
+
+---
+**NOTE**
+
+Writing a FASTA record in FASTQ format throws an exception unless the record is
+empty (a record with empty sequence and quality string).
+
+---
+
 Benchmark
 ---------
 ### Datasets

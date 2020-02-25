@@ -226,7 +226,7 @@ For this benchmark, I re-used sequence files from SeqKit benchmark:
 - OS: Debian GNU/Linux 9.4 (stretch), Linux 4.9.91-1-amd64-smp
 - Compiler: GCC 6.3.0, compiled with optimisation level 3 (`-O3`)
 
-### Result
+### Result (for kseq++ v0.1.4)
 
 #### Reading all records
 

@@ -26,7 +26,7 @@
 #include <vector>
 #include <fcntl.h>
 
-#include "kseq++.h"
+#include <kseq++/kseq++.hpp>
 #include "kseq.h"
 #include "seqan/seq_io.h"
 

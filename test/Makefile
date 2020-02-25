@@ -1,6 +1,6 @@
 ## Directories:
 # Package source files directory.
-SRCDIR       := ../src
+SRCDIR       := ../include
 # Binary files directory.
 BINDIR       := ./bin
 # Make the binary files directory.
@@ -18,7 +18,7 @@ TEST_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 CXX          ?= g++
 # Compiler flags.
 MACROS       ?= -DTESTDIR=\"${TEST_PATH}\"
-CPPFLAGS      = -Wall -pedantic -std=c++14 ${MACROS} ${LIBS_CFLAGS}
+CPPFLAGS      = -Wall -Werror -pedantic -std=c++14 ${MACROS} ${LIBS_CFLAGS}
 CXXFLAGS     ?= -g
 LIBS_CFLAGS  := -I${SRCDIR}/ \
                 -Iinclude/ \

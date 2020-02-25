@@ -19,7 +19,7 @@
 #include <iostream>
 #include <string>
 
-#include "seqio.h"
+#include <kseq++/seqio.hpp>
 #include "kseq.h"
 
 #define DEFAULT_TMPDIR "/tmp"

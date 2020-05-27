@@ -6,6 +6,6 @@ Name: kseq++
 Description: Fast FASTA/Q parser and writer
 URL: https://github.com/cartoonist/kseqpp
 Version: @PROJECT_VERSION@
-Requires: zlib libbz2-dev pthreads
+Requires: zlib
 Cflags: -I${includedir}
-Libs: -lz -lbz2 -lpthread
+Libs: -lbz2 -lpthread

@@ -3,6 +3,7 @@ project(kseq++ VERSION 0.2.2 LANGUAGES CXX)
 
 # Include external modules
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 # Finding dependencies.
 find_package(ZLIB REQUIRED)
@@ -40,3 +41,19 @@ add_library(kseq++::kseq++ ALIAS kseq++)
 # Install targets
 install(DIRECTORY include/kseq++ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} PATTERN "*.hpp.in" EXCLUDE)
 install(FILES kseq++.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+# Exporting targets
+install(TARGETS kseq++ EXPORT kseq++-targets)
+install(EXPORT kseq++-targets NAMESPACE kseq++:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/kseq++)
+# Creating the package configuration file
+configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/kseq++-config.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/kseq++)
+# Generating the version file for the configuration file
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config-version.cmake"
+  VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}"
+  COMPATIBILITY AnyNewerVersion)
+# Install generated configuration files
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config-version.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/kseq++)

@@ -261,6 +261,18 @@ namespace klibpp {
         }
 
           inline void
+        set_nowrapping()
+        {
+          this->set_wraplen( 0 );
+        }
+
+          inline void
+        set_wrapping()
+        {
+          this->set_wraplen( DEFAULT_WRAPLEN );
+        }
+
+          inline void
         set_format( format::Format fmt_ )
         {
           this->fmt = fmt_;

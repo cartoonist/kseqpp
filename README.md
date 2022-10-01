@@ -166,10 +166,6 @@ int main(int argc, char* argv[])
 }
 ```
 
-While writing a record to a file, sequence and quality scores can be wrapped at
-a certain length. The default wrapping length is 60 bps and can be customised by
-`KStream::set_wraplen` method.
-
 ---
 **NOTE**
 
@@ -180,6 +176,18 @@ to make sure that there is no data loss.
 There is no need to write `kend` to the stream if using `SeqStreamOut`.
 
 ---
+
+### Wrapping seq/qual lines
+
+While writing a record to a file, sequence and quality scores can be wrapped at
+a certain length. The default wrapping length for FASTA format is 60 bps and can
+be customised by `KStream::set_wraplen` method. For FASTQ format -- i.e. when
+the format is explicitly set to `format::fastq` -- output sequence and quality
+string are not wrapped by default.
+
+Wrapping can be disabled or enable by `KStream::set_nowrapping` and
+`KStream::set_wrapping` methods respectively. The latter reset the wrapping
+length to the default value (60 bps).
 
 ### Formatting
 

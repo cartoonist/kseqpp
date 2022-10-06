@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(kseq++ VERSION 0.2.4 LANGUAGES CXX)
 
+#options
+option(BUILD_TESTING "Build test programs" OFF)  # ignored by default
+
 # Include external modules
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -57,3 +60,8 @@ write_basic_package_version_file(
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config-version.cmake"
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/kseq++)
+
+# Adding test submodule
+if(BUILD_TESTING)
+  add_subdirectory(test)
+endif(BUILD_TESTING)

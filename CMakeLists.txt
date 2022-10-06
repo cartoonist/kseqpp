@@ -3,6 +3,7 @@ project(kseq++ VERSION 0.2.4 LANGUAGES CXX)
 
 #options
 option(BUILD_TESTING "Build test programs" OFF)  # ignored by default
+option(BUILD_BENCHMARKING "Build benchmark program" OFF)  # ignored by default
 
 # Include external modules
 include(GNUInstallDirs)
@@ -65,3 +66,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/kseq++-config.cmake"
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif(BUILD_TESTING)
+
+# Adding benchmark submodule
+if(BUILD_BENCHMARKING)
+  add_subdirectory(benchmark)
+endif(BUILD_BENCHMARKING)

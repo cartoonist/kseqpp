@@ -8,6 +8,7 @@ buffer and works with different file types. However, instead of using C macros,
 it uses C++ templates.
 
 It inherits all features from kseq (quoting from kseq homepage):
+
 > - Parse both FASTA and FASTQ format, and even a mixture of FASTA and FASTQ records in one file.
 > - Seamlessly adapt to gzipped compressed file when used with zlib.
 > - Support multi-line FASTQ.
@@ -226,7 +227,7 @@ int main(int argc, char* argv[])
 }
 ```
 
----
+* * *
 **NOTE**
 
 The buffer will be flushed to the file when the `KStream` object goes out of the
@@ -235,7 +236,7 @@ to make sure that there is no data loss.
 
 There is no need to write `kend` to the stream if using `SeqStreamOut`.
 
----
+* * *
 
 #### Wrapping seq/qual lines
 
@@ -266,13 +267,67 @@ will write a FASTQ record in FASTA format. These modifiers affect all writes
 after them until another modifier is used. The `format::mix` modifier reverts
 the behaviour to default.
 
----
+* * *
 **NOTE**
 
 Writing a FASTA record in FASTQ format throws an exception unless the record is
 empty (a record with empty sequence and quality string).
 
----
+* * *
+
+Installation
+------------
+kseq++ is a header-only library and can be simply included in a project. The
+`kseq++.hpp` is the core header file and `seqio.hpp` is optional and only needs
+to be included when using higher-level API (see
+[above](#higher-level-api-seqio.hpp)). The latter requires `zlib` as dependency
+which should be linked.
+
+There are also other ways to install the library:
+
+### From source
+Installing from source requires CMake>= 3.10:
+
+``` shell
+git clone https://github.com/cartoonist/kseqpp
+cd kseqpp
+mkdir build && cd build
+cmake .. # -DCMAKE_INSTALL_PREFIX=/path/to/custom/install/prefix (optional)
+make install
+```
+
+### From conda
+It is also distributed on bioconda:
+``` shell
+conda install -c bioconda kseq++
+```
+
+CMake integration
+-----------------
+After installing the library, you can import the library to your project using
+`find_package`. It imports `kseq++::kseq++` target which can be passed to
+`target_include_directories` and `target_link_libraries` calls. This is a sample
+CMake file for building `myprogram` which uses the library:
+
+``` cmake
+cmake_minimum_required(VERSION 3.10)
+project(myprogram VERSION 0.0.1 LANGUAGES CXX)
+
+find_package(kseq++ REQUIRED)
+
+set(SOURCES "src/main.cpp")
+add_executable(myprogram ${SOURCES})
+target_include_directories(myprogram
+  PRIVATE kseq++::kseq++)
+target_link_libraries(myprogram
+  PRIVATE kseq++::kseq++)
+```
+
+Development
+-----------
+CMake options:
+- for building tests: `-DBUILD_TESTING=on`
+- for building benchmark: `-DBUILD_BENCHMARKING=on`
 
 Benchmark
 ---------

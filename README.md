@@ -5,15 +5,10 @@ by [Heng Li](https://github.com/lh3). The goal for re-implementation of `kseq` i
 providing better API and resource management while preserving its flexibility
 and performance. Like original kseq, this parser is based on generic stream
 buffer and works with different file types. However, instead of using C macros,
-it uses C++ templates. The RAII-style class `KStream` is the main class which
-can be constructed by `make_kstream` function series or by calling its
-constructor directly (C++17). It gets the file object/pointer (can be of any
-type), its corresponding read/write function, and opening mode (`mode::in` or
-`mode::out`).  In contrast with kseq, there is no need to specify the types,
-since they are inferred by compiler. Each record will be stored in a `KSeq`
-object.
+it uses C++ templates.
 
 It inherits all features from kseq (quoting from kseq homepage):
+
 > - Parse both FASTA and FASTQ format, and even a mixture of FASTA and FASTQ records in one file.
 > - Seamlessly adapt to gzipped compressed file when used with zlib.
 > - Support multi-line FASTQ.
@@ -23,22 +18,60 @@ while additionally provides:
 - simpler and more readable API
 - RAII-style memory management
 
-The library also comes with FASTA/Q writer. Like reading, it can write mixed
-multi-line FASTA and FASTQ records with gzip compression. The writer is
+The library also comes with a **FASTA/Q writer**. Like reading, it can write
+mixed multi-line FASTA and FASTQ records with _gzip compression_. The writer is
 multi-threaded and the actual write function call happens in another thread in
 order to hide the IO latency.
 
-Higher-level API
-----------------
-Apart from `KStream` class, this library provides another level of abstraction
-which hides most details and provides very simple API on top of `KStream` for
-working with sequence files: `SeqStreamIn` and `SeqStreamOut` for reading
-and writing a sequence file respectively.  In order to prevent imposing any
-unwanted external libraries (e.g. `zlib`) , the `SeqStream` class set are
-defined in a separated header file (`seqio.h`) from the core library.
+The RAII-style class `KStream` is the core class which handles input and output
+streams. Each FASTA or FASTQ record will be stored in a `KSeq` object.
 
-Reading a sequence file
------------------------
+This library provides another layer of abstraction which hides most details and
+provides very simple API on top of `KStream`: `SeqStreamIn` and `SeqStreamOut`
+classes for reading and writing a sequence file respectively with exactly the
+same interface. It is **highly recommended** to use these classes unless you
+intent to use low-level interface like changing buffer size or use custom stream
+type.
+
+Looking for a quick start guide?
+--------------------------------
+Jump to [Examples](#examples).
+
+KStream (`kseq++.hpp`)
+----------------------
+`KStream` is a generic, template class with the following template parameters
+which are usually inferred by the compiler when constructed (so, there is no
+need to provide them manually):
+- `TFile`: type of the underlying stream/file (e.g. `gzFile`)
+- `TFunc`: type of the read/write function corresponding to `TFile` (e.g.
+  `int (*)(gzFile_s*, const void*, unsigned int)` for an output stream with
+  `gzFile` as underlying file type)
+- `TSpec`: stream opening mode (with values: `mode::in` or `mode::out`)
+
+The template parameters are inferred by compiler in C++17 when instantiated by
+calling their constructors. `make_kstream` function family also construct
+`KStream`s which might be useful for inferring template parameters when using
+older standards; e.g. C++11 or C++14.
+
+To construct an instance, it requires at least three arguments: 1) the file
+object/pointer/descriptor (can be of any type), 2) its corresponding read/write
+function, and 3) stream opening mode (see [Examples](#examples)).
+
+Higher-level API (`seqio.hpp`)
+------------------------------
+This header file defines `SeqStream` class set: i.e. `SeqStreamIn` and
+`SeqStreamOut`. `SeqStream` classes are inherited from `KStream` with simpler
+constructors using sensible defaults. They do not define any new method or
+override inherited ones. So, they can be treated the same way as `KStream`.
+
+In order to prevent imposing any unwanted external libraries (e.g. `zlib`) , the
+`SeqStream` class set are defined in a separated header file (`seqio.hpp`) from
+the core library.
+
+Examples
+--------
+
+### Reading a sequence file
 These examples read FASTQ/A records one by one from either compressed or
 uncompressed file.
 
@@ -46,14 +79,14 @@ Using `SeqStreamIn`:
 
 ```c++
 #include <iostream>
-#include "seqio.h"
+#include <kseq++/seqio.hpp>
 
 using namespace klibpp;
 
 int main(int argc, char* argv[])
 {
   KSeq record;
-  SeqStreamIn iss("file.dat");
+  SeqStreamIn iss("file.fq.gz");
   while (iss >> record) {
     std::cout << record.name << std::endl;
     if (!record.comment.empty()) std::cout << record.comment << std::endl;
@@ -63,12 +96,15 @@ int main(int argc, char* argv[])
 }
 ```
 
-Using `KStream`:
+<details>
+<summary>Low-level API</summary>
+
+Using `KStream`
 
 ```c++
 #include <iostream>
 #include <zlib>
-#include "kseq++.h"
+#include <kseq++/kseq++.hpp>
 
 using namespace klibpp;
 
@@ -88,6 +124,7 @@ int main(int argc, char* argv[])
   gzclose(fp);
 }
 ```
+</details>
 
 Or records can be fetched and stored in a `std::vector< KSeq >` in chunks.
 
@@ -95,24 +132,27 @@ Using `SeqStreamIn`:
 
 ```c++
 #include <iostream>
-#include "seqio.h"
+#include <kseq++/seqio.hpp>
 
 using namespace klibpp;
 
 int main(int argc, char* argv[])
 {
-  SeqStreamIn iss("file.dat");
+  SeqStreamIn iss("file.fq");
   auto records = iss.read();
   // auto records = iss.read(100);  // read a chunk of 100 records
 }
 ```
 
-Using `KStream`:
+<details>
+<summary>Low-level API</summary>
+
+Using `KStream`
 
 ```c++
 #include <iostream>
 #include <zlib>
-#include "kseq++.h"
+#include <kseq++/kseq++.hpp>
 
 using namespace klibpp;
 
@@ -125,16 +165,16 @@ int main(int argc, char* argv[])
   gzclose(fp);
 }
 ```
+</details>
 
-Writing a sequence file
------------------------
+### Writing a sequence file
 These examples write FASTA/Q records to an uncompressed file.
 
 Using `SeqStreamIn`:
 
 ```c++
 #include <iostream>
-#include "seqio.h"
+#include <kseq++/seqio.hpp>
 
 using namespace klibpp;
 
@@ -145,12 +185,15 @@ int main(int argc, char* argv[])
 }
 ```
 
-Using `KStream`:
+<details>
+<summary>Low-level API</summary>
+
+Using `KStream`
 
 ```c++
 #include <iostream>
 #include <zlib>
-#include "kseq++.h"
+#include <kseq++/kseq++.hpp>
 
 using namespace klibpp;
 
@@ -165,8 +208,26 @@ int main(int argc, char* argv[])
   close(fd);
 }
 ```
+</details>
 
----
+Another example for writing a series of FASTQ records to a gzipped file in
+_FASTA_ format:
+
+```c++
+#include <iostream>
+#include <kseq++/seqio.hpp>
+
+using namespace klibpp;
+
+int main(int argc, char* argv[])
+{
+  /* let `record` be a list of FASTQ records */
+  SeqStreamOut oss("file.fa.gz", /* compression */ true, format::fasta);
+  for (KSeq const& r : records) oss << r;
+}
+```
+
+* * *
 **NOTE**
 
 The buffer will be flushed to the file when the `KStream` object goes out of the
@@ -175,9 +236,9 @@ to make sure that there is no data loss.
 
 There is no need to write `kend` to the stream if using `SeqStreamOut`.
 
----
+* * *
 
-### Wrapping seq/qual lines
+#### Wrapping seq/qual lines
 
 While writing a record to a file, sequence and quality scores can be wrapped at
 a certain length. The default wrapping length for FASTA format is 60 bps and can
@@ -189,7 +250,7 @@ Wrapping can be disabled or enable by `KStream::set_nowrapping` and
 `KStream::set_wrapping` methods respectively. The latter reset the wrapping
 length to the default value (60 bps).
 
-### Formatting
+#### Formatting
 
 The default behaviour is to write a record in FASTQ format if it has quality
 information. Otherwise, i.e. when the quality string is empty, the record will
@@ -206,13 +267,67 @@ will write a FASTQ record in FASTA format. These modifiers affect all writes
 after them until another modifier is used. The `format::mix` modifier reverts
 the behaviour to default.
 
----
+* * *
 **NOTE**
 
 Writing a FASTA record in FASTQ format throws an exception unless the record is
 empty (a record with empty sequence and quality string).
 
----
+* * *
+
+Installation
+------------
+kseq++ is a header-only library and can be simply included in a project. The
+`kseq++.hpp` is the core header file and `seqio.hpp` is optional and only needs
+to be included when using higher-level API (see
+[above](#higher-level-api-seqio.hpp)). The latter requires `zlib` as dependency
+which should be linked.
+
+There are also other ways to install the library:
+
+### From source
+Installing from source requires CMake>= 3.10:
+
+``` shell
+git clone https://github.com/cartoonist/kseqpp
+cd kseqpp
+mkdir build && cd build
+cmake .. # -DCMAKE_INSTALL_PREFIX=/path/to/custom/install/prefix (optional)
+make install
+```
+
+### From conda
+It is also distributed on bioconda:
+``` shell
+conda install -c bioconda kseq++
+```
+
+CMake integration
+-----------------
+After installing the library, you can import the library to your project using
+`find_package`. It imports `kseq++::kseq++` target which can be passed to
+`target_include_directories` and `target_link_libraries` calls. This is a sample
+CMake file for building `myprogram` which uses the library:
+
+``` cmake
+cmake_minimum_required(VERSION 3.10)
+project(myprogram VERSION 0.0.1 LANGUAGES CXX)
+
+find_package(kseq++ REQUIRED)
+
+set(SOURCES "src/main.cpp")
+add_executable(myprogram ${SOURCES})
+target_include_directories(myprogram
+  PRIVATE kseq++::kseq++)
+target_link_libraries(myprogram
+  PRIVATE kseq++::kseq++)
+```
+
+Development
+-----------
+CMake options:
+- for building tests: `-DBUILD_TESTING=on`
+- for building benchmark: `-DBUILD_BENCHMARKING=on`
 
 Benchmark
 ---------

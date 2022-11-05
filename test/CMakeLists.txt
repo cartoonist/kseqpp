@@ -18,3 +18,10 @@ target_include_directories(seqio-test
   PRIVATE kseq++::kseq++)
 target_link_libraries(seqio-test
   PRIVATE kseq++::kseq++)
+
+add_custom_target(test
+  COMMAND ./test/kseq++-test ${PROJECT_SOURCE_DIR}/test/kseq++_test.dat
+  COMMAND ./test/seqio-test ${PROJECT_SOURCE_DIR}/test/kseq++_test.dat
+  DEPENDS kseq++-test seqio-test
+  WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+  )

@@ -25,6 +25,9 @@ tags
 # compile flags
 compile_commands.json
 
+# Local config files
+.envrc
+
 ## GitHub defaults ##
 # Compiled Object files
 *.slo

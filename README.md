@@ -299,7 +299,7 @@ make install
 ### From conda
 It is also distributed on bioconda:
 ``` shell
-conda install -c bioconda kseq++
+conda install -c bioconda kseqpp
 ```
 
 CMake integration

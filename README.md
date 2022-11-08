@@ -35,7 +35,7 @@ type.
 
 Looking for a quick start guide?
 --------------------------------
-Jump to [Examples](#examples).
+Jump to [Examples](#examples) or [Installation](#installation).
 
 KStream (`kseq++.hpp`)
 ----------------------
@@ -277,9 +277,13 @@ empty (a record with empty sequence and quality string).
 
 Installation
 ------------
-kseq++ is a header-only library and can be simply included in a project. The
-`kseq++.hpp` is the core header file and `seqio.hpp` is optional and only needs
-to be included when using higher-level API (see
+kseq++ is a header-only library and can be simply included in a project. Use
+the package provided in the
+[Releases](https://github.com/cartoonist/kseqpp/releases) section and copy
+`include/kseq++` to your project tree.
+
+The `kseq++.hpp` is the core header file and `seqio.hpp` is optional and only
+needs to be included when using higher-level API (see
 [above](#higher-level-api-seqio.hpp)). The latter requires `zlib` as dependency
 which should be linked.
 
@@ -302,8 +306,10 @@ It is also distributed on bioconda:
 conda install -c bioconda kseqpp
 ```
 
-CMake integration
------------------
+Development
+-----------
+
+### CMake integration
 After installing the library, you can import the library to your project using
 `find_package`. It imports `kseq++::kseq++` target which can be passed to
 `target_include_directories` and `target_link_libraries` calls. This is a sample
@@ -323,8 +329,6 @@ target_link_libraries(myprogram
   PRIVATE kseq++::kseq++)
 ```
 
-Development
------------
 CMake options:
 - for building tests: `-DBUILD_TESTING=on`
 - for building benchmark: `-DBUILD_BENCHMARKING=on`

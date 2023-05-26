@@ -682,7 +682,7 @@ namespace klibpp {
               // Fabian commmented on this here (https://twitter.com/kloetzl/status/1661679452479266818)
               // and suggested that std::find() may be more idiomatic.  However, I'm a bit concerned
               // that may be non-trivially slower than memchr (https://gms.tf/stdfind-and-memchr-optimizations.html).
-              unsigned char *sep = std:::memchr(ks->buf + ks->begin, '\n', ks->end - ks->begin);
+              unsigned char *sep = std::memchr(ks->buf + ks->begin, '\n', ks->end - ks->begin);
               i = (sep != nullptr) ? (sep - ks->buf) : ks->end;
             }
             else if ( delimiter > KStream::SEP_MAX ) {

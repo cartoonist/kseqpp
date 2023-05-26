@@ -678,9 +678,12 @@ namespace klibpp {
             if ( !( c = this->getc( ) ) ) break;
             --this->begin;
             if ( delimiter == KStream::SEP_LINE ) {
-              for ( i = this->begin; i < this->end; ++i ) {
-                if ( this->buf[ i ] == '\n' ) break;
-              }
+              // Incorporate optimization from new seqtk (see : https://github.com/lh3/seqtk/pull/123)
+              // Fabian commmented on this here (https://twitter.com/kloetzl/status/1661679452479266818)
+              // and suggested that std::find() may be more idiomatic.  However, I'm a bit concerned
+              // that may be non-trivially slower than memchr (https://gms.tf/stdfind-and-memchr-optimizations.html).
+              unsigned char *sep = memchr(ks->buf + ks->begin, '\n', ks->end - ks->begin);
+				      i = (sep != NULL) ? (sep - ks->buf) : ks->end;
             }
             else if ( delimiter > KStream::SEP_MAX ) {
               for ( i = this->begin; i < this->end; ++i ) {

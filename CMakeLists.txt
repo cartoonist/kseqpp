@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(kseq++ VERSION 1.0.0 LANGUAGES CXX)
+project(kseq++ VERSION 1.1.0 LANGUAGES CXX)
 
 #options
 option(BUILD_TESTING "Build test programs" OFF)  # ignored by default

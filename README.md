@@ -335,6 +335,14 @@ CMake options:
 
 Benchmark
 ---------
+**NOTE**: The results below are based on older versions of kseq++ and `kseq.h`.
+  - [ ] TODO Update benchmark
+
+**NOTE**: It is fair to say that kseq++ comes with a very negligible overhead
+and is _almost_ as fast as `kseq.h` (in 'read' mode) with an idiomatic C++ API
+and more convinient resource management. The original `kseq.h` does not support
+writing FASTA/Q files.
+
 ### Datasets
 For this benchmark, I re-used sequence files from SeqKit benchmark:
 [seqkit-benchmark-data.tar.gz](http://app.shenwei.me/data/seqkit/seqkit-benchmark-data.tar.gz)

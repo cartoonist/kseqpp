@@ -1,6 +1,6 @@
 kseq++
 ======
-kseq++ is a C++11 re-implementation of [kseq](https://github.com/attractivechaos/klib/blob/master/kseq.h)
+kseq++ is a C++11 re-implementation of [kseq](https://github.com/lh3/seqtk/blob/master/kseq.h)[.h](https://github.com/attractivechaos/klib/blob/master/kseq.h)
 by [Heng Li](https://github.com/lh3). The goal for re-implementation of `kseq` is
 providing better API and resource management while preserving its flexibility
 and performance. Like original kseq, this parser is based on generic stream

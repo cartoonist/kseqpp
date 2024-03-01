@@ -428,7 +428,7 @@ namespace klibpp {
           inline void
         worker_start( )
         {
-          this->worker = std::thread( &KStream::writer, this );
+          this->worker = std::thread( [this](){ this->writer(); } );
         }
     };
 

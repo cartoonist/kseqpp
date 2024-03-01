@@ -373,7 +373,7 @@ For this benchmark, I re-used sequence files from SeqKit benchmark:
 
 \* storing all records in `std::vector`.
 
-\*\* storing all records in `seqan::StringSet< seqan::CharString >`.
+\*\* storing all records in `seqan2::StringSet< seqan2::CharString >`.
 
 #### Writing all records
 

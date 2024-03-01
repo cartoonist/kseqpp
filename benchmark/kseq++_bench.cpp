@@ -121,10 +121,10 @@ main( int argc, char* argv[] )
     close( fd );
   }
   {
-    seqan::SeqFileIn f;
-    seqan::CharString name;
-    seqan::CharString str;
-    seqan::CharString qual;
+    seqan2::SeqFileIn f;
+    seqan2::CharString name;
+    seqan2::CharString str;
+    seqan2::CharString qual;
     open( f, argv[1] );
     t = clock();
     while ( !atEnd( f ) ) readRecord( name, str, qual, f );
@@ -201,11 +201,11 @@ main( int argc, char* argv[] )
     std::cerr << "[kseq++/read_all] " << std::setprecision(3) << d << " sec" << std::endl;
     gzclose( fp );
   }
-  seqan::StringSet< seqan::CharString > names;
-  seqan::StringSet< seqan::CharString > seqs;
-  seqan::StringSet< seqan::CharString > quals;
+  seqan2::StringSet< seqan2::CharString > names;
+  seqan2::StringSet< seqan2::CharString > seqs;
+  seqan2::StringSet< seqan2::CharString > quals;
   {
-    seqan::SeqFileIn i_file;
+    seqan2::SeqFileIn i_file;
     open( i_file, argv[1] );
     t = clock();
     readRecords( names, seqs, quals, i_file );
@@ -215,8 +215,8 @@ main( int argc, char* argv[] )
   }
   std::cerr << "=== WRITE TESTS ===" << std::endl;
   {
-    seqan::SeqFileOut o_file;
-    open( o_file, argv[2], seqan::FileOpenMode::OPEN_WRONLY );
+    seqan2::SeqFileOut o_file;
+    open( o_file, argv[2], seqan2::FileOpenMode::OPEN_WRONLY );
     t = clock();
     writeRecords( o_file, names, seqs, quals );
     close( o_file );

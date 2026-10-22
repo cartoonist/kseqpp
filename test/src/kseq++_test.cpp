@@ -20,6 +20,8 @@
 #include <iomanip>
 #include <string>
 #include <fcntl.h>
+#include <algorithm>
+#include <cstring>
 
 #include <kseq++/kseq++.hpp>
 #include "kseq.h"
@@ -113,6 +115,43 @@ check( const char* filename, size_t nrec, size_t tot, size_t min, size_t max )
   gzclose(fp);
 }
 
+struct MemSource {
+  const char* data;
+  size_t size;
+  size_t offset;
+};
+
+  int
+mem_read( MemSource* src, void* dst, unsigned int len )
+{
+  size_t n = std::min< size_t >( len, src->size - src->offset );
+  std::memcpy( dst, src->data + src->offset, n );
+  src->offset += n;
+  return static_cast< int >( n );
+}
+
+/**
+ *  @brief  A NUL byte is data, as it is for kseq.h, not the end of the input.
+ *
+ *  `getc()` returns 0 both for a NUL byte and at the end of the input. When a NUL
+ *  starts a token, `getuntil()` used to stop with no byte scanned, and then read
+ *  `buf[ -1 ]` (an `assert` failure in debug builds).
+ */
+  void
+check_nul_byte( )
+{
+  static const char data[] = "@\0r1\nACGT\n+\nIIII\n";
+  MemSource src{ data, sizeof( data ) - 1, 0 };
+  auto iks = make_kstream( &src, mem_read, mode::in );
+  KSeq record;
+  assert( iks >> record );
+  assert( record.name == std::string( "\0r1", 3 ) );
+  assert( record.seq == "ACGT" );
+  assert( record.qual == "IIII" );
+  assert( !( iks >> record ) );
+  std::cout << "NUL byte check PASSED" << std::endl;
+}
+
   int
 main( int argc, char* argv[] )
 {
@@ -120,6 +159,8 @@ main( int argc, char* argv[] )
     std::cerr << "Usage: " << argv[0] << " FILE" << std::endl;
     return EXIT_FAILURE;
   }
+
+  check_nul_byte();
 
   // Using a file in TMPDIR for writing output.
   std::string tmpfile = get_tmpfile();

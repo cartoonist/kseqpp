@@ -675,7 +675,9 @@ namespace klibpp {
           if ( !append ) str.clear();
           size_type i = -1;
           do {
-            if ( !( c = this->getc( ) ) ) break;
+            c = this->getc( );
+            // `getc` returns 0 for a NUL byte too; only the end of the input stops the scan.
+            if ( !c && ( this->err() || this->eof() ) ) break;
             --this->begin;
             if ( delimiter == KStream::SEP_LINE ) {
               // Incorporate optimization from new seqtk (see : https://github.com/lh3/seqtk/pull/123)
